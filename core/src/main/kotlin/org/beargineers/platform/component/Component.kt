@@ -58,7 +58,7 @@ abstract class Component : ConfigScope {
     /** Parts of this component, in the order they were created */
     val children: List<Component> get() = parts.toList()
 
-    val runtime: LoopRuntime get() = robot.host.runtime
+    val runtime: LoopRuntime get() = robot.host.runner.runtime
 
     /** Called once before the first [update]: set up hardware here */
     protected open fun init() {}

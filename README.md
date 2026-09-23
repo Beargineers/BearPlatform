@@ -9,7 +9,7 @@ numbers, and nothing tied to a particular season.
 | Module | What                                                                                     |
 |--------|------------------------------------------------------------------------------------------|
 | `core` | Pure Kotlin/JVM, no FTC SDK. Everything here runs in unit tests on a laptop.              |
-| `ftc`  | Android library on top of the FTC SDK: `CoroutineOpMode`; hardware and gamepad to follow. |
+| `ftc`  | Android library on top of the FTC SDK: `CoroutineOpMode` and hardware; gamepad to follow. |
 
 ### core
 
@@ -112,6 +112,29 @@ class Driving : CoroutineOpMode() {
 Every loop, `CoroutineOpMode` reads all hub sensors in one bulk read, updates the robot's components, runs
 coroutines and sends telemetry.
 
+Motors and servos are components too, so their settings live in config under their parent's path:
+
+```kotlin
+class Turret(parent: Component) : Component(parent) {
+    val motor = Motor(this, "turret", gearRatio = 121.0 / 16)  // turret.turret.direction, .brake, .gearRatio
+    val pinpoint by hardware<GoBildaPinpointDriver>()          // any other device from the robot configuration
+
+    override fun update() {
+        val angle = motor.position                             // an Angle at the turret, after the gearing
+        motor.power = 0.3                                      // only sent to the hub when it changes
+    }
+}
+
+class Shooter(parent: Component) : Component(parent) {
+    val latch = PositionServo(this, "latch")
+    val latchOpen by config(0.3)
+    val latchClosed by config(0.65)
+}
+```
+
+Unit tests use fake devices (`ftc/src/test/.../FakeHardware.kt`), since the SDK's own device lookup needs the
+Control Hub.
+
 ## Conventions
 
 - **Field coordinates** follow the FTC field coordinate system: origin at the field center, heading 0 faces +x,
@@ -130,7 +153,10 @@ coroutines and sends telemetry.
 2. ~~`core`: coroutine loop runtime (`LoopRuntime`, `nextTick`, `waitUntil`, `race`, `ExclusiveResource`)~~
 3. ~~`core`: config (typed delegates, scoped keys, units in values)~~
 4. ~~`Component` tree (`core`) and `CoroutineOpMode` (`ftc`)~~
-5. `ftc`: config files and settings web page, hardware wrappers with units, gamepad input
+5. `ftc`
+   1. ~~hardware: `Motor` and `PositionServo` with units and config settings, `hardware<T>()` for other devices~~
+   2. gamepad input
+   3. config files on the robot and the settings web page
 6. `ftc`: drivetrain, localization, path following
 7. Port a real robot onto the platform
 

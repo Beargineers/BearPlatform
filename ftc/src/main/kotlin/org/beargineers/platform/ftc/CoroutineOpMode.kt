@@ -2,10 +2,9 @@ package org.beargineers.platform.ftc
 
 import com.qualcomm.hardware.lynx.LynxModule
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode
+import com.qualcomm.robotcore.eventloop.opmode.OpMode
 import com.qualcomm.robotcore.util.RobotLog
 import kotlinx.coroutines.CoroutineScope
-import org.beargineers.platform.component.Robot
-import org.beargineers.platform.component.RobotHost
 import org.beargineers.platform.component.RobotRunner
 import org.beargineers.platform.runtime.LoopRuntime
 
@@ -18,12 +17,12 @@ import org.beargineers.platform.runtime.LoopRuntime
  * Every loop reads all hub sensors in one bulk read, updates the robot's components, runs coroutines,
  * and sends telemetry.
  */
-abstract class CoroutineOpMode : LinearOpMode(), RobotHost {
-    private val runner = RobotRunner(log = { RobotLog.ii(LOG_TAG, "%s", it) })
+abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
+    final override val runner = RobotRunner(log = { RobotLog.ii(LOG_TAG, "%s", it) })
 
-    override val runtime: LoopRuntime get() = runner.runtime
+    final override val opMode: OpMode get() = this
 
-    override fun attach(robot: Robot) = runner.attach(robot)
+    val runtime: LoopRuntime get() = runner.runtime
 
     open suspend fun CoroutineScope.onInit() {}
 

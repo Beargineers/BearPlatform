@@ -13,16 +13,17 @@ import kotlin.time.TimeSource
  */
 abstract class Robot(val host: RobotHost) : Component() {
     init {
-        host.attach(this)
+        host.runner.attach(this)
     }
 }
 
-/** What runs a robot: the opmode on the Control Hub, or a test */
+/**
+ * What a robot is created with: the opmode on the Control Hub, or a [RobotRunner] in tests.
+ * Platform modules extend it with what their components need, like the FTC hardware.
+ */
 interface RobotHost {
-    val runtime: LoopRuntime
-
-    /** Called by the [Robot] when it is created */
-    fun attach(robot: Robot)
+    /** Runs the robot created with this host */
+    val runner: RobotRunner
 }
 
 /**
@@ -30,14 +31,16 @@ interface RobotHost {
  * The FTC opmode drives it on the robot; tests drive it directly.
  */
 class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -> Unit = {}) : RobotHost {
-    override val runtime = LoopRuntime(timeSource, log)
+    val runtime = LoopRuntime(timeSource, log)
+
+    override val runner: RobotRunner get() = this
 
     var robot: Robot? = null
         private set
 
     private var initJob: Job? = null
 
-    override fun attach(robot: Robot) {
+    internal fun attach(robot: Robot) {
         check(this.robot == null) { "An opmode can only have one robot" }
         this.robot = robot
     }

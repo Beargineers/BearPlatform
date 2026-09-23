@@ -20,6 +20,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
+
+    // Unit tests run on the laptop with fake devices; Android calls inside the SDK just return defaults there
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 kotlin {
@@ -36,4 +41,8 @@ dependencies {
     // The season app brings the FTC SDK, so compile against it without forcing a version on the app
     compileOnly("org.firstinspires.ftc:RobotCore:$ftcSdkVersion")
     compileOnly("org.firstinspires.ftc:Hardware:$ftcSdkVersion")
+
+    testImplementation(kotlin("test-junit"))
+    testImplementation("org.firstinspires.ftc:RobotCore:$ftcSdkVersion")
+    testImplementation("org.firstinspires.ftc:Hardware:$ftcSdkVersion")
 }
