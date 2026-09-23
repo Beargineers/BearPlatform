@@ -1,0 +1,4 @@
+# Keep the Gradle wrapper runnable on every OS
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
