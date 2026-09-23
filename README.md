@@ -44,6 +44,31 @@ suspend fun Drive.driveTo(target: Pose) = resource.takeOver("driveTo $target") {
 ```
 
   `delay` and `withTimeout` work too; they measure time with the runtime's `TimeSource`, so tests control the clock.
+- `config`: settings that change without rebuilding the code, declared right where they are used:
+
+```kotlin
+class Shooter {
+    val kV by config(0.00036)                   // key: Shooter.kV
+    val spinUp by config(300.milliseconds)
+    val direction by config(Direction.FORWARD)  // any enum works; "F" is enough in the config text
+}
+```
+
+  The config text uses the Java properties format, and values may carry units:
+
+```properties
+# Comments go on their own lines: text after a value becomes part of the value
+Shooter.kV = 0.0004
+Shooter.spinUp = 250ms
+# Tile codes need Config.field to be set to the season's Field
+AutoPositions.NORTH_START = F6BL:135
+# Plain numbers are cm for distances and degrees for angles
+Camera.forward = 4.5in
+```
+
+  Keys are `<class name>.<property>`; a class implements `ConfigScope` to pick its own prefix, so two instances can
+  have separate settings. `Config.load()` rejects text with unreadable values and keeps the old ones, and
+  `Config.problems()` lists keys nothing uses, with "did you mean" hints for typos.
 
 ## Conventions
 
@@ -61,7 +86,7 @@ suspend fun Drive.driveTo(target: Pose) = resource.takeOver("driveTo $target") {
 
 1. ~~`core`: units and geometry~~
 2. ~~`core`: coroutine loop runtime (`LoopRuntime`, `nextTick`, `waitUntil`, `race`, `ExclusiveResource`)~~
-3. `core`: config (typed delegates, scoped keys, pluggable sources)
+3. ~~`core`: config (typed delegates, scoped keys, units in values)~~
 4. `ftc`: `Component` tree and `CoroutineOpMode`
 5. `ftc`: hardware wrappers with units, gamepad input
 6. `ftc`: drivetrain, localization, path following
