@@ -6,10 +6,10 @@ numbers, and nothing tied to a particular season.
 
 ## Modules
 
-| Module | What                                                                                              |
-|--------|---------------------------------------------------------------------------------------------------|
-| `core` | Pure Kotlin/JVM, no FTC SDK. Everything here runs in unit tests on a laptop.                       |
-| `ftc`  | *(planned)* Android library on top of the FTC SDK: opmodes, components, hardware, gamepad, config. |
+| Module | What                                                                                     |
+|--------|------------------------------------------------------------------------------------------|
+| `core` | Pure Kotlin/JVM, no FTC SDK. Everything here runs in unit tests on a laptop.              |
+| `ftc`  | Android library on top of the FTC SDK: `CoroutineOpMode`; hardware and gamepad to follow. |
 
 ### core
 
@@ -25,17 +25,40 @@ val turn = target.heading - robotPose.heading      // always the shortest turn, 
 val blueStart = field.forAlliance(start, Alliance.BLUE)
 ```
 
+- `component`: the robot is a tree of `Component`s with a `Robot` at the top:
+
+```kotlin
+class Shooter(parent: Component) : Component(parent) {  // named "shooter" after its class
+    val latch = Latch(this)                             // path "shooter.latch"
+    val kV by config(0.00036)                           // config key "shooter.kV"
+
+    override fun update() { /* every loop, before coroutines run */ }
+
+    suspend fun shoot() = takeOver("shoot") { /* stops any other shooter action */ }
+}
+
+class GammaRobot(host: RobotHost) : Robot(host) {
+    val localizer = Localizer(this)                     // created first, so updated first
+    val shooter = Shooter(this)
+    val leftFlywheel = Flywheel(this, "left")           // same kind twice needs names
+    val rightFlywheel = Flywheel(this, "right")
+}
+```
+
+  Components `init()` before the first loop, `update()` every loop, and `stop()` at the end; parents before their
+  parts, siblings in creation order.
+
 - `runtime`: `LoopRuntime` runs coroutines on the robot loop, one step per `tick()`. Robot code is written as
   plain sequential `suspend` functions:
 
 ```kotlin
-suspend fun Robot.collectAndShoot() = withName("Collect and shoot") {
+suspend fun GammaRobot.collectAndShoot() = withName("Collect and shoot") {
     race({ driveTo(SPIKE_1) }, { waitUntil { intake.isFull } })  // whichever happens first
     waitUntil(1.seconds) { shooter.isReady }                      // gives up after a second
-    shoot()
+    shooter.shoot()
 }
 
-suspend fun Drive.driveTo(target: Pose) = resource.takeOver("driveTo $target") {  // stops any other drive action
+suspend fun Drive.driveTo(target: Pose) = takeOver("driveTo $target") {  // stops any other drive action
     while (!isAt(target)) {
         followTowards(target)
         nextTick()
@@ -44,13 +67,14 @@ suspend fun Drive.driveTo(target: Pose) = resource.takeOver("driveTo $target") {
 ```
 
   `delay` and `withTimeout` work too; they measure time with the runtime's `TimeSource`, so tests control the clock.
+
 - `config`: settings that change without rebuilding the code, declared right where they are used:
 
 ```kotlin
-class Shooter {
-    val kV by config(0.00036)                   // key: Shooter.kV
-    val spinUp by config(300.milliseconds)
-    val direction by config(Direction.FORWARD)  // any enum works; "F" is enough in the config text
+class Turret(parent: Component) : Component(parent) {
+    val kP by config(0.02)                      // key: turret.kP
+    val settleTime by config(300.milliseconds)
+    val mode by config(TurretMode.FOLLOW)       // any enum works; a unique beginning like "FO" is enough
 }
 ```
 
@@ -58,17 +82,35 @@ class Shooter {
 
 ```properties
 # Comments go on their own lines: text after a value becomes part of the value
-Shooter.kV = 0.0004
-Shooter.spinUp = 250ms
+turret.kP = 0.025
+turret.settleTime = 250ms
 # Tile codes need Config.field to be set to the season's Field
 AutoPositions.NORTH_START = F6BL:135
 # Plain numbers are cm for distances and degrees for angles
-Camera.forward = 4.5in
+camera.forward = 4.5in
 ```
 
-  Keys are `<class name>.<property>`; a class implements `ConfigScope` to pick its own prefix, so two instances can
-  have separate settings. `Config.load()` rejects text with unreadable values and keeps the old ones, and
-  `Config.problems()` lists keys nothing uses, with "did you mean" hints for typos.
+  Components use their path as the key prefix; other classes use their class name, or implement `ConfigScope`.
+  `Config.load()` rejects text with unreadable values and keeps the old ones, and `Config.problems()` lists keys
+  nothing uses, with "did you mean" hints for typos.
+
+### ftc
+
+```kotlin
+@TeleOp
+class Driving : CoroutineOpMode() {
+    val robot = GammaRobot(this)
+
+    override suspend fun CoroutineScope.onInit() { /* from INIT until START: menus, starting pose */ }
+
+    override suspend fun CoroutineScope.onStart() {
+        everyTick { /* driving */ }
+    }
+}
+```
+
+Every loop, `CoroutineOpMode` reads all hub sensors in one bulk read, updates the robot's components, runs
+coroutines and sends telemetry.
 
 ## Conventions
 
@@ -87,13 +129,17 @@ Camera.forward = 4.5in
 1. ~~`core`: units and geometry~~
 2. ~~`core`: coroutine loop runtime (`LoopRuntime`, `nextTick`, `waitUntil`, `race`, `ExclusiveResource`)~~
 3. ~~`core`: config (typed delegates, scoped keys, units in values)~~
-4. `ftc`: `Component` tree and `CoroutineOpMode`
-5. `ftc`: hardware wrappers with units, gamepad input
+4. ~~`Component` tree (`core`) and `CoroutineOpMode` (`ftc`)~~
+5. `ftc`: config files and settings web page, hardware wrappers with units, gamepad input
 6. `ftc`: drivetrain, localization, path following
 7. Port a real robot onto the platform
 
 ## Build
 
 ```
-./gradlew test
+./gradlew test               # core unit tests
+./gradlew :ftc:assembleDebug # builds the FTC module
 ```
+
+The `ftc` module needs the Android SDK. Android Studio creates `local.properties` with its location when it opens
+the project; from the command line, create it with `sdk.dir=/path/to/Android/sdk`.

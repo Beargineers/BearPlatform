@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 rootProject.name = "BearPlatform"
 
 include(":core")
+include(":ftc")
