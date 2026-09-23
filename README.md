@@ -25,6 +25,26 @@ val turn = target.heading - robotPose.heading      // always the shortest turn, 
 val blueStart = field.forAlliance(start, Alliance.BLUE)
 ```
 
+- `runtime`: `LoopRuntime` runs coroutines on the robot loop, one step per `tick()`. Robot code is written as
+  plain sequential `suspend` functions:
+
+```kotlin
+suspend fun Robot.collectAndShoot() = withName("Collect and shoot") {
+    race({ driveTo(SPIKE_1) }, { waitUntil { intake.isFull } })  // whichever happens first
+    waitUntil(1.seconds) { shooter.isReady }                      // gives up after a second
+    shoot()
+}
+
+suspend fun Drive.driveTo(target: Pose) = resource.takeOver("driveTo $target") {  // stops any other drive action
+    while (!isAt(target)) {
+        followTowards(target)
+        nextTick()
+    }
+}
+```
+
+  `delay` and `withTimeout` work too; they measure time with the runtime's `TimeSource`, so tests control the clock.
+
 ## Conventions
 
 - **Field coordinates** follow the FTC field coordinate system: origin at the field center, heading 0 faces +x,
@@ -40,7 +60,7 @@ val blueStart = field.forAlliance(start, Alliance.BLUE)
 ## Roadmap
 
 1. ~~`core`: units and geometry~~
-2. `core`: coroutine loop runtime (`LoopRuntime`, `nextTick`, `waitUntil`, `race`, `exclusive`)
+2. ~~`core`: coroutine loop runtime (`LoopRuntime`, `nextTick`, `waitUntil`, `race`, `ExclusiveResource`)~~
 3. `core`: config (typed delegates, scoped keys, pluggable sources)
 4. `ftc`: `Component` tree and `CoroutineOpMode`
 5. `ftc`: hardware wrappers with units, gamepad input

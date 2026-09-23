@@ -21,6 +21,8 @@ kotlin {
 }
 
 dependencies {
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+
     testImplementation(kotlin("test"))
     testImplementation(platform("org.junit:junit-bom:5.13.3"))
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
