@@ -9,7 +9,7 @@ numbers, and nothing tied to a particular season.
 | Module | What                                                                                     |
 |--------|------------------------------------------------------------------------------------------|
 | `core` | Pure Kotlin/JVM, no FTC SDK. Everything here runs in unit tests on a laptop.              |
-| `ftc`  | Android library on top of the FTC SDK: `CoroutineOpMode` and hardware; gamepad to follow. |
+| `ftc`  | Android library on top of the FTC SDK: `CoroutineOpMode`, hardware, gamepads.            |
 
 ### core
 
@@ -94,6 +94,9 @@ camera.forward = 4.5in
   `Config.load()` rejects text with unreadable values and keeps the old ones, and `Config.problems()` lists keys
   nothing uses, with "did you mean" hints for typos.
 
+- `input`: buttons, triggers and sticks read once per loop, so all code in a loop sees the same presses. Button
+  handlers are coroutines that live as long as the coroutine that set them up.
+
 ### ftc
 
 ```kotlin
@@ -104,13 +107,21 @@ class Driving : CoroutineOpMode() {
     override suspend fun CoroutineScope.onInit() { /* from INIT until START: menus, starting pose */ }
 
     override suspend fun CoroutineScope.onStart() {
-        everyTick { /* driving */ }
+        driver1.rightBumper.onPress { robot.goShoot() }        // pressing again starts it over
+        driver1.a.onTap { robot.intake.toggle() }
+        driver1.a.whileHeld(after = 300.milliseconds) { robot.intake.reverse() }  // cancelled on release
+        driver2.rightTrigger.asButton(threshold = 0.1).onPress { robot.shootNow() }
+
+        everyTick {
+            val forward = driver1.leftStick.y.value          // positive when pushed forward
+            ...
+        }
     }
 }
 ```
 
-Every loop, `CoroutineOpMode` reads all hub sensors in one bulk read, updates the robot's components, runs
-coroutines and sends telemetry.
+Every loop, `CoroutineOpMode` reads the gamepads and all hub sensors (in one bulk read), updates the robot's
+components, runs coroutines and sends telemetry. Handlers set up in `onInit` stop at START.
 
 Motors and servos are components too, so their settings live in config under their parent's path:
 
@@ -155,7 +166,7 @@ Control Hub.
 4. ~~`Component` tree (`core`) and `CoroutineOpMode` (`ftc`)~~
 5. `ftc`
    1. ~~hardware: `Motor` and `PositionServo` with units and config settings, `hardware<T>()` for other devices~~
-   2. gamepad input
+   2. ~~gamepad input: `driver1`, `driver2` with buttons, triggers and sticks~~
    3. config files on the robot and the settings web page
 6. `ftc`: drivetrain, localization, path following
 7. Port a real robot onto the platform

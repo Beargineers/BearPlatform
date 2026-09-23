@@ -39,6 +39,12 @@ class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -
         private set
 
     private var initJob: Job? = null
+    private val inputs = mutableListOf<() -> Unit>()
+
+    /** Reads inputs, like gamepads, at the start of every [tick], before anything else runs */
+    internal fun readEveryTick(input: () -> Unit) {
+        inputs += input
+    }
 
     internal fun attach(robot: Robot) {
         check(this.robot == null) { "An opmode can only have one robot" }
@@ -51,8 +57,12 @@ class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -
         initJob = runtime.launch("init", onInit)
     }
 
-    /** One loop: updates all components, initializing those created since the last loop first, then runs coroutines */
+    /**
+     * One loop: reads inputs, updates all components (initializing those created since the last loop first),
+     * then runs coroutines
+     */
     fun tick() {
+        inputs.forEach { it() }
         robot?.let { robot ->
             val components = robot.inOrder()
             components.forEach { it.initIfNew() }
