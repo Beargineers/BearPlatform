@@ -99,6 +99,23 @@ camera.forward = 4.5in
 - `input`: buttons, triggers and sticks read once per loop, so all code in a loop sees the same presses. Button
   handlers are coroutines that live as long as the coroutine that set them up.
 
+- `control`: `Pid` and `Feedforward`, with gains as config settings that can be tuned live, plus `Debouncer`,
+  `Hysteresis` and `SlewRateLimiter`:
+
+```kotlin
+class Flywheel(parent: Component) : Component(parent) {
+    val motor = Motor(this, "motor", ticksPerTurn = 28.0)
+    val feedforward by config(Feedforward(kS = 0.05, kV = 0.00017))  // flywheel.feedforward = kS=0.05, kV=0.00017
+    val gains by config(PidGains(p = 0.0005))                         // flywheel.gains = p=0.0005, i=0, d=0
+    private val pid = Pid { gains }
+    var targetRpm = 0.0
+
+    override fun update() {
+        motor.power = feedforward.power(targetRpm) + pid.update(targetRpm - motor.velocity.inRpm)
+    }
+}
+```
+
 ### ftc
 
 ```kotlin
@@ -189,8 +206,9 @@ downloads the SDK's match logs.
    1. ~~hardware: `Motor` and `PositionServo` with units and config settings, `hardware<T>()` for other devices~~
    2. ~~gamepad input: `driver1`, `driver2` with buttons, triggers and sticks~~
    3. ~~config files on the robot and the settings web page~~
-6. `ftc`: drivetrain, localization, path following
-7. Port a real robot onto the platform
+6. ~~`core`: control (PID, feedforward, debouncer, hysteresis, slew rate)~~
+7. drivetrain, localization, path following
+8. Port a real robot onto the platform
 
 ## Build
 

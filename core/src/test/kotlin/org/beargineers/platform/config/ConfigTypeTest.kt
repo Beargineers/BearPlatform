@@ -1,6 +1,8 @@
 package org.beargineers.platform.config
 
 import org.beargineers.platform.assertClose
+import org.beargineers.platform.control.Feedforward
+import org.beargineers.platform.control.PidGains
 import org.beargineers.platform.geometry.Field
 import org.beargineers.platform.geometry.FieldDirection
 import org.beargineers.platform.geometry.FieldSymmetry
@@ -97,6 +99,19 @@ class ConfigTypeTest {
     }
 
     @Test
+    fun gainsInOrderOrByName() {
+        assertEquals(PidGains(0.02, 0.0, 0.001), parse(PidGains::class, "0.02, 0, 0.001"))
+        assertEquals(PidGains(0.02), parse(PidGains::class, "0.02"))
+        assertEquals(PidGains(0.02, 0.0, 0.001), parse(PidGains::class, "d=0.001, P = 0.02"))
+        assertEquals(Feedforward(0.04, 0.0085), parse(Feedforward::class, "kS=0.04, kV=0.0085"))
+
+        assertFailsWith<IllegalArgumentException> { parse(PidGains::class, "0.02, 0, 0.001, 0.3") }
+        assertFailsWith<IllegalArgumentException> { parse(PidGains::class, "p=0.02, 0.001") }
+        val thrown = assertFailsWith<IllegalArgumentException> { parse(PidGains::class, "p=0.02, f=1") }
+        assertTrue("'f'" in thrown.message!!, thrown.message)
+    }
+
+    @Test
     fun formattedValuesReadBack() {
         fun <T : Any> roundTrip(kClass: KClass<T>, value: T): T {
             val type = Config.typeOf(kClass)
@@ -112,6 +127,9 @@ class ConfigTypeTest {
         assertEquals(-90.0, roundTrip(Heading::class, 270.degrees.toHeading()).inDegrees, 1e-9)
         assertClose(Point(1.cm, 2.5.cm), roundTrip(Point::class, Point(1.cm, 2.5.cm)))
         assertClose(Pose(1.cm, 2.cm, 30.degrees), roundTrip(Pose::class, Pose(1.cm, 2.cm, 30.degrees)))
+        assertEquals(PidGains(0.00036, 0.1, 2.0), roundTrip(PidGains::class, PidGains(0.00036, 0.1, 2.0)))
+        assertEquals(Feedforward(0.04, 0.0085, 0.0), roundTrip(Feedforward::class, Feedforward(0.04, 0.0085)))
+        assertEquals("p=0.02, i=0, d=0.001", Config.typeOf(PidGains::class).format(PidGains(0.02, d = 0.001)))
     }
 
     @Test

@@ -1,5 +1,7 @@
 package org.beargineers.platform.config
 
+import org.beargineers.platform.control.Feedforward
+import org.beargineers.platform.control.PidGains
 import org.beargineers.platform.geometry.Field
 import org.beargineers.platform.geometry.Point
 import org.beargineers.platform.geometry.Pose
@@ -40,7 +42,39 @@ internal fun standardConfigTypes(): Map<KClass<*>, ConfigType<*>> = mapOf(
     Pose::class to ConfigType("pose", ::parsePose) {
         "${formatDistance(it.x)}, ${formatDistance(it.y)}, ${formatAngle(it.heading.toAngle())}"
     },
+    PidGains::class to ConfigType("PID gains", { text ->
+        val (p, i, d) = parseNamedNumbers(text, listOf("p", "i", "d"), "PID gains like 'p=0.02, i=0, d=0.001'")
+        PidGains(p, i, d)
+    }) { "p=${formatNumber(it.p)}, i=${formatNumber(it.i)}, d=${formatNumber(it.d)}" },
+    Feedforward::class to ConfigType("feedforward", { text ->
+        val (kS, kV, kA) = parseNamedNumbers(text, listOf("kS", "kV", "kA"), "feedforward like 'kS=0.04, kV=0.0085, kA=0'")
+        Feedforward(kS, kV, kA)
+    }) { "kS=${formatNumber(it.kS)}, kV=${formatNumber(it.kV)}, kA=${formatNumber(it.kA)}" },
 )
+
+/**
+ * Reads up to [names].size numbers, either in order ("0.02, 0, 0.001") or by name in any order ("p=0.02, d=0.001").
+ * Numbers left out are zero.
+ */
+private fun parseNamedNumbers(text: String, names: List<String>, expected: String): List<Double> {
+    val parts = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    if (parts.isEmpty() || parts.size > names.size) fail("expected $expected")
+
+    val values = DoubleArray(names.size)
+    when {
+        parts.none { '=' in it } -> parts.forEachIndexed { index, part ->
+            values[index] = part.toDoubleOrNull() ?: fail("expected $expected")
+        }
+        parts.all { '=' in it } -> for (part in parts) {
+            val (name, number) = part.split('=', limit = 2).map { it.trim() }
+            val index = names.indexOfFirst { it.equals(name, ignoreCase = true) }
+            if (index < 0) fail("unknown '$name', expected $expected")
+            values[index] = number.toDoubleOrNull() ?: fail("expected $expected")
+        }
+        else -> fail("expected $expected, either all named or none")
+    }
+    return values.toList()
+}
 
 internal fun <T : Any> enumConfigType(kClass: KClass<T>): ConfigType<T> {
     val constants = kClass.java.enumConstants
