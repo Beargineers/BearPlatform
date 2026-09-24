@@ -75,7 +75,7 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
         telemetry.update()
     }
 
-    private companion object {
-        const val LOG_TAG = "BearPlatform"
-    }
 }
+
+/** Tag of the platform's lines in logcat and the robot's logs */
+internal const val LOG_TAG = "BearPlatform"

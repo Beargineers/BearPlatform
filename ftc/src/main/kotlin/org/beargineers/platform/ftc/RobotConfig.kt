@@ -10,7 +10,11 @@ import java.io.File
  * The robot's config: loads the text from [files] into [Config], and keeps edits made on the robot.
  * The opmodes and the settings web page share one instance, [onRobot].
  */
-class RobotConfig(private val files: ConfigFiles) {
+class RobotConfig(
+    private val files: ConfigFiles,
+    /** When the app was installed, in milliseconds since the epoch, if known */
+    val appInstalledAt: Long? = null,
+) {
     private var loaded = false
 
     /** The config text in effect, or the one that will be once an opmode starts */
@@ -58,13 +62,14 @@ class RobotConfig(private val files: ConfigFiles) {
          * edits are kept in `FIRST/settings/BearPlatform` on the Control Hub.
          */
         fun onRobot(context: Context): RobotConfig = onRobot ?: synchronized(this) {
-            onRobot ?: RobotConfig(
-                ConfigFiles(File(AppUtil.ROBOT_SETTINGS, "BearPlatform"), installedBuild(context)) { bundled(context) }
-            ).also { onRobot = it }
+            onRobot ?: run {
+                val installedAt = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+                val files = ConfigFiles(File(AppUtil.ROBOT_SETTINGS, "BearPlatform"), installedAt.toString()) {
+                    bundled(context)
+                }
+                RobotConfig(files, installedAt)
+            }.also { onRobot = it }
         }
-
-        private fun installedBuild(context: Context): String =
-            context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime.toString()
 
         private fun bundled(context: Context): String {
             val resources = context.resources

@@ -19,7 +19,7 @@ fi
 
 echo "Sending $cfg_path"
 out=$(curl -sS -m 5 --fail-with-body \
-  -H "Content-Type: text/plain; charset=utf-8" \
+  -H "Content-Type: text/plain; charset=UTF-8" \
   --data-binary "@$cfg_path" \
   "$robot/bear/config.properties" 2>&1)
 rc=$?
@@ -31,4 +31,5 @@ if [ $rc -ne 0 ]; then
   exit $rc
 fi
 
-echo "OK"
+# The robot answers "Saved"
+echo "Robot: $out"

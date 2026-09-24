@@ -42,6 +42,10 @@ internal object SettingsPage {
             </form>
         """.trimIndent()
 
+        val installedHtml = config.appInstalledAt?.let {
+            """<p class="muted">App installed ${installedAgo(it)}.</p>"""
+        } ?: ""
+
         val settingsHtml = if (declarations.isEmpty()) "" else buildString {
             append("<h2>Settings</h2><div class=\"scroll\"><table><tr><th>Key</th><th>Type</th><th>Default</th><th>In config</th></tr>")
             for (declaration in declarations) {
@@ -78,6 +82,7 @@ internal object SettingsPage {
             |</form>
             |$resetHtml
             |$settingsHtml
+            |$installedHtml
             |<script>
             |  document.getElementById('settings').addEventListener('input', function () {
             |    document.getElementById('unsaved').hidden = false;
@@ -89,6 +94,20 @@ internal object SettingsPage {
     }
 
     private const val TEXT_PLACEHOLDER = "\u0000config-text\u0000"
+
+    /**
+     * How long ago [installedAt] was, like "12 min ago". Relative, so it stays right when the Control Hub's clock
+     * is off: it tells whether the app on the robot is the build just installed.
+     */
+    fun installedAgo(installedAt: Long, now: Long = System.currentTimeMillis()): String {
+        val minutes = (now - installedAt) / 60_000
+        return when {
+            minutes < 1 -> "less than a minute ago"
+            minutes < 60 -> "$minutes min ago"
+            minutes < 48 * 60 -> "${minutes / 60} h ago"
+            else -> "${minutes / (24 * 60)} days ago"
+        }
+    }
 
     fun escape(text: String): String = text
         .replace("&", "&amp;")

@@ -183,6 +183,17 @@ class SettingsPageTest {
     }
 
     @Test
+    fun showsHowLongAgoTheAppWasInstalled() {
+        val installed = RobotConfig(ConfigFiles(directory, "1") { bundled }, System.currentTimeMillis() - 5 * 60_000)
+        assertTrue("App installed 5 min ago." in SettingsPage.html(installed))
+
+        val now = 1_000_000_000L
+        assertEquals("less than a minute ago", SettingsPage.installedAgo(now - 30_000, now))
+        assertEquals("3 h ago", SettingsPage.installedAgo(now - 3 * 3_600_000, now))
+        assertEquals("4 days ago", SettingsPage.installedAgo(now - 4 * 86_400_000L, now))
+    }
+
+    @Test
     fun resetOnlyWhenEdited() {
         assertFalse(SettingsPage.RESET_PATH in SettingsPage.html(config))
         config.edit("a = 1")

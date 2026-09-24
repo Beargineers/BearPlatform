@@ -1,6 +1,7 @@
 package org.beargineers.platform.ftc
 
 import android.content.Context
+import com.qualcomm.robotcore.util.RobotLog
 import com.qualcomm.robotcore.util.WebHandlerManager
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoHTTPD.IHTTPSession
@@ -30,36 +31,54 @@ object SettingsWebPages {
     @JvmStatic
     fun register(context: Context, manager: WebHandlerManager) {
         val config = RobotConfig.onRobot(context)
-        manager.register(SettingsPage.PATH) { session -> configPage(config, session) }
-        manager.register(SettingsPage.RESET_PATH) { session -> resetConfig(config, session) }
-        manager.register(SettingsPage.RAW_PATH) { session -> rawConfig(config, session) }
+        val log = { message: String -> RobotLog.ii(LOG_TAG, "%s", message) }
+        registerPages(manager, config, log)
         manager.register(SettingsPage.MATCH_LOGS_PATH) { matchLogs() }
+        log("Settings page ready at ${SettingsPage.PATH}; app installed ${config.appInstalledAt?.let(SettingsPage::installedAgo)}")
     }
 
-    private fun configPage(config: RobotConfig, session: IHTTPSession): Response {
-        if (session.method != NanoHTTPD.Method.POST) return html(Status.OK, SettingsPage.html(config))
+    internal fun registerPages(manager: WebHandlerManager, config: RobotConfig, log: (String) -> Unit) {
+        manager.register(SettingsPage.PATH) { session -> configPage(config, session, log) }
+        manager.register(SettingsPage.RESET_PATH) { session -> resetConfig(config, session, log) }
+        manager.register(SettingsPage.RAW_PATH) { session -> rawConfig(config, session, log) }
+    }
+
+    private fun configPage(config: RobotConfig, session: IHTTPSession, log: (String) -> Unit): Response {
+        if (session.method != NanoHTTPD.Method.POST) {
+            val outcome = when {
+                SAVED in session.parameters -> Outcome.Saved
+                RESET in session.parameters -> Outcome.Reset
+                else -> null
+            }
+            return html(Status.OK, SettingsPage.html(config, outcome))
+        }
 
         session.parseBody(HashMap())
         val text = session.parameters["settings"]?.firstOrNull() ?: ""
         return try {
             config.edit(text)
-            html(Status.OK, SettingsPage.html(config, Outcome.Saved))
+            log("Config saved from the settings page")
+            // Answer with a redirect, so that reloading the page shows it again rather than sending this edit again
+            redirect("${SettingsPage.PATH}?$SAVED")
         } catch (e: ConfigException) {
+            log("Config from the settings page rejected: ${e.problems.joinToString("; ")}")
             html(Status.BAD_REQUEST, SettingsPage.html(config, Outcome.Rejected(e.problems), text))
         }
     }
 
-    private fun resetConfig(config: RobotConfig, session: IHTTPSession): Response {
-        if (session.method != NanoHTTPD.Method.POST) return html(Status.OK, SettingsPage.html(config))
+    private fun resetConfig(config: RobotConfig, session: IHTTPSession, log: (String) -> Unit): Response {
+        if (session.method != NanoHTTPD.Method.POST) return redirect(SettingsPage.PATH)
         return try {
             config.discardEdits()
-            html(Status.OK, SettingsPage.html(config, Outcome.Reset))
+            log("Config back to the one bundled with the app")
+            redirect("${SettingsPage.PATH}?$RESET")
         } catch (e: ConfigException) {
+            log("Bundled config rejected: ${e.problems.joinToString("; ")}")
             html(Status.BAD_REQUEST, SettingsPage.html(config, Outcome.Rejected(e.problems)))
         }
     }
 
-    private fun rawConfig(config: RobotConfig, session: IHTTPSession): Response {
+    private fun rawConfig(config: RobotConfig, session: IHTTPSession, log: (String) -> Unit): Response {
         if (session.method != NanoHTTPD.Method.POST) return text(Status.OK, config.text)
 
         val body = HashMap<String, String>()
@@ -68,8 +87,10 @@ object SettingsWebPages {
             ?: return text(Status.BAD_REQUEST, "Send the config as the body, with Content-Type: text/plain\n")
         return try {
             config.edit(newText)
+            log("Config saved from a script")
             text(Status.OK, "Saved\n")
         } catch (e: ConfigException) {
+            log("Config from a script rejected: ${e.problems.joinToString("; ")}")
             text(Status.BAD_REQUEST, e.problems.joinToString("\n", postfix = "\n"))
         }
     }
@@ -95,11 +116,19 @@ object SettingsWebPages {
             }
     }
 
+    // The SDK's web server answers in UTF-8 whatever the charset, and logs a warning unless it is spelled exactly so
     private fun html(status: Status, html: String): Response =
-        NanoHTTPD.newFixedLengthResponse(status, "text/html; charset=utf-8", html)
+        NanoHTTPD.newFixedLengthResponse(status, "text/html; charset=UTF-8", html)
 
     private fun text(status: Status, text: String): Response =
-        NanoHTTPD.newFixedLengthResponse(status, "text/plain; charset=utf-8", text)
+        NanoHTTPD.newFixedLengthResponse(status, "text/plain; charset=UTF-8", text)
+
+    private fun redirect(location: String): Response =
+        NanoHTTPD.newFixedLengthResponse(Status.REDIRECT_SEE_OTHER, "text/plain; charset=UTF-8", "")
+            .apply { addHeader("Location", location) }
+
+    private const val SAVED = "saved"
+    private const val RESET = "reset"
 
     /** Deletes the zipped logs once the whole zip was sent, so an interrupted download loses nothing */
     private class DeleteWhenSent(bytes: ByteArray, private val files: List<File>) : ByteArrayInputStream(bytes) {
