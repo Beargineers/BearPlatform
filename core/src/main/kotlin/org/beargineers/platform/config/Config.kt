@@ -68,7 +68,7 @@ object Config {
             val raw = values[declaration.key]
             when {
                 raw != null -> declaration.check(raw)
-                declaration.default == null -> "${declaration.key} is not set and has no default"
+                declaration.isRequired -> "${declaration.key} is not set and has no default"
                 else -> null
             }
         }
@@ -95,8 +95,8 @@ object Config {
         )
     }
 
-    internal fun <T : Any> declare(key: String, type: ConfigType<T>, default: T?): Declaration<T> {
-        val declaration = Declaration(key, type, default)
+    internal fun <T : Any> declare(key: String, type: ConfigType<T>, default: T?, optional: Boolean): Declaration<T> {
+        val declaration = Declaration(key, type, default, optional)
         val previous = declarations.putIfAbsent(key, declaration) ?: return declaration
 
         // Declaring a key again shares the setting: another instance of the same class, or the robot being created
@@ -104,6 +104,7 @@ object Config {
         val difference = when {
             previous.type != type -> "types ${previous.type.name} and ${type.name}"
             previous.default != default -> "defaults ${previous.defaultText} and ${declaration.defaultText}"
+            previous.optional != optional -> "declarations: one optional, one not"
             else -> return declaration
         }
         error("Config key $key is declared twice with different $difference. Give one of them another key or ConfigScope.")
@@ -180,13 +181,25 @@ interface ConfigScope {
 }
 
 /** A setting declared by the code */
-class Declaration<T : Any> internal constructor(val key: String, val type: ConfigType<T>, val default: T?) {
+class Declaration<T : Any> internal constructor(
+    val key: String,
+    val type: ConfigType<T>,
+    val default: T?,
+    /** Whether the setting may be left out, see [optionalConfig] */
+    val optional: Boolean,
+) {
     /** The default written the way the config text would have it, or null for settings without a default */
     val defaultText: String? get() = default?.let(type.format)
 
-    internal fun valueIn(values: Map<String, String>): T {
-        val raw = values[key]
-            ?: return default ?: throw ConfigException(listOf("$key is not set and has no default"))
+    /** Whether the config text has to set it: there is no default, and it isn't optional */
+    val isRequired: Boolean get() = default == null && !optional
+
+    /** The value in [values], else the default; null only for optional settings */
+    internal fun valueIn(values: Map<String, String>): T? {
+        val raw = values[key] ?: return when {
+            isRequired -> throw ConfigException(listOf("$key is not set and has no default"))
+            else -> default
+        }
         return try {
             type.parse(raw)
         } catch (e: Exception) {

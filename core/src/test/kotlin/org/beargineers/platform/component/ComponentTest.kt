@@ -60,6 +60,12 @@ private class TestRobot(host: RobotHost) : Robot(host) {
 
 private class Flywheel(parent: Component, name: String? = null) : Component(parent, name)
 
+private class Doubtful(parent: Component) : Component(parent) {
+    override fun init() {
+        warn("looks odd")
+    }
+}
+
 private class TwoFlywheels(host: RobotHost, secondName: String?) : Robot(host) {
     val left = Flywheel(this, "left")
     val other = Flywheel(this, secondName)
@@ -172,6 +178,18 @@ class ComponentTest {
         runner.tick()
         val lateEvents = robot.events.filter { "late" in it }
         assertEquals(listOf("init late", "update late"), lateEvents)
+    }
+
+    @Test
+    fun componentsReportWarnings() {
+        val logged = mutableListOf<String>()
+        val runner = RobotRunner(TestTimeSource()) { logged += it }
+        val robot = TestRobot(runner)
+        Doubtful(robot)
+        runner.init()
+
+        assertEquals(listOf("doubtful: looks odd"), robot.warnings)
+        assertTrue("Warning: doubtful: looks odd" in logged, "$logged")
     }
 
     @Test

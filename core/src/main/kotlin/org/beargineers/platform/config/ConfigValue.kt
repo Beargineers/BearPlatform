@@ -13,32 +13,54 @@ import kotlin.reflect.KProperty
 inline fun <reified T : Any> config(default: T? = null, key: String? = null): ConfigDelegateProvider<T> =
     ConfigDelegateProvider(Config.typeOf(T::class), default, key)
 
+/**
+ * Declares a setting that may be left out: `val cameraOffset by optionalConfig<Distance>()` is null unless the config
+ * text sets it, or [default] when that is given. The key works as for [config].
+ */
+inline fun <reified T : Any> optionalConfig(default: T? = null, key: String? = null): OptionalConfigDelegateProvider<T> =
+    OptionalConfigDelegateProvider(Config.typeOf(T::class), default, key)
+
 class ConfigDelegateProvider<T : Any> @PublishedApi internal constructor(
     private val type: ConfigType<T>,
     private val default: T?,
     private val key: String?,
 ) : PropertyDelegateProvider<Any?, ConfigValue<T>> {
-    override operator fun provideDelegate(thisRef: Any?, property: KProperty<*>): ConfigValue<T> =
-        ConfigValue(Config.declare(key ?: Config.keyFor(thisRef, property.name), type, default))
+    override operator fun provideDelegate(thisRef: Any?, property: KProperty<*>): ConfigValue<T> {
+        val declaration = Config.declare(key ?: Config.keyFor(thisRef, property.name), type, default, optional = false)
+        // A required setting without a value throws in valueIn rather than returning null
+        return ConfigValue(declaration.key) { values -> declaration.valueIn(values)!! }
+    }
+}
+
+class OptionalConfigDelegateProvider<T : Any> @PublishedApi internal constructor(
+    private val type: ConfigType<T>,
+    private val default: T?,
+    private val key: String?,
+) : PropertyDelegateProvider<Any?, ConfigValue<T?>> {
+    override operator fun provideDelegate(thisRef: Any?, property: KProperty<*>): ConfigValue<T?> {
+        val declaration = Config.declare(key ?: Config.keyFor(thisRef, property.name), type, default, optional = true)
+        return ConfigValue(declaration.key) { values -> declaration.valueIn(values) }
+    }
 }
 
 /** The current value of one setting. It reads the config text again only after the text changes. */
-class ConfigValue<T : Any> internal constructor(private val declaration: Declaration<T>) : ReadOnlyProperty<Any?, T> {
-    private class Cached<T>(val version: Int, val value: T)
+class ConfigValue<V> internal constructor(
+    val key: String,
+    private val read: (values: Map<String, String>) -> V,
+) : ReadOnlyProperty<Any?, V> {
+    private class Cached<V>(val version: Int, val value: V)
 
     @Volatile
-    private var cached: Cached<T>? = null
+    private var cached: Cached<V>? = null
 
-    val key: String get() = declaration.key
-
-    val value: T
+    val value: V
         get() {
             val snapshot = Config.snapshot
             cached?.let { if (it.version == snapshot.version) return it.value }
-            val value = declaration.valueIn(snapshot.values)
+            val value = read(snapshot.values)
             cached = Cached(snapshot.version, value)
             return value
         }
 
-    override fun getValue(thisRef: Any?, property: KProperty<*>): T = value
+    override fun getValue(thisRef: Any?, property: KProperty<*>): V = value
 }

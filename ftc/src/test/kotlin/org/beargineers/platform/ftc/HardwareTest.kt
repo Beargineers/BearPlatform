@@ -3,6 +3,8 @@ package org.beargineers.platform.ftc
 import com.qualcomm.robotcore.hardware.DcMotor
 import com.qualcomm.robotcore.hardware.DcMotorSimple
 import com.qualcomm.robotcore.hardware.Servo
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.UserConfigurationType
 import org.beargineers.platform.component.Component
 import org.beargineers.platform.component.Robot
 import org.beargineers.platform.component.RobotHost
@@ -16,6 +18,7 @@ import kotlin.test.assertTrue
 private class Shooter(parent: Component) : Component(parent) {
     val flywheel = Motor(this, "flywheel", direction = DcMotorSimple.Direction.REVERSE, brake = false)
     val turret = Motor(this, "turret", gearRatio = 2.0)
+    val hood = Motor(this, "hood", ticksPerTurn = 1425.1)
     val latch = PositionServo(this, "latch", device = "latchServo")
 }
 
@@ -31,6 +34,7 @@ class HardwareTest {
     private val host = TestFtcHost()
     private val flywheel = FakeMotor()
     private val turret = FakeMotor()
+    private val hood = FakeMotor()
     private val latch = FakeServo()
 
     @BeforeTest
@@ -38,7 +42,18 @@ class HardwareTest {
         Config.load("")
         host.hardware.add("flywheel", flywheel.device)
         host.hardware.add("turret", turret.device)
+        host.hardware.add("hood", hood.device)
         host.hardware.add("latchServo", latch.device)
+    }
+
+    /**
+     * The SDK's type for goBILDA Yellow Jacket motors: always the 60 RPM model's numbers. Its xml tag has no setter,
+     * and the constructor taking one starts SDK machinery that needs the Control Hub, hence reflection.
+     */
+    private fun goBildaType() = MotorConfigurationType().apply {
+        ticksPerRev = 2786.0
+        UserConfigurationType::class.java.getDeclaredField("xmlTag").apply { isAccessible = true }
+            .set(this, "goBILDA5202SeriesMotor")
     }
 
     private fun startRobot(): TestRobot = TestRobot(host).also { host.runner.init() }
@@ -69,7 +84,29 @@ class HardwareTest {
         turret.ticksPerSecond = 384.5
         assertEquals(360.0, robot.shooter.turret.position.inDegrees, 1e-9)
         assertEquals(180.0, robot.shooter.turret.velocity.inDegreesPerSecond, 1e-9)
-        assertEquals(435.0 / 2, robot.shooter.turret.maxVelocity.inRpm, 1e-9)
+    }
+
+    @Test
+    fun ticksPerTurnOverridesTheMotorType() {
+        hood.motorType = goBildaType()
+        val robot = startRobot()
+        hood.position = 14251 // ten turns of a goBILDA 117 RPM
+        assertEquals(3600.0, robot.shooter.hood.position.inDegrees, 1e-9)
+
+        Config.load("shooter.turret.ticksPerTurn = 769")
+        turret.position = 769
+        assertEquals(180.0, robot.shooter.turret.position.inDegrees, 1e-9, "one motor turn, halved by the gear ratio")
+    }
+
+    @Test
+    fun warnsAboutTheGoBildaMotorTypeWithoutTicksPerTurn() {
+        flywheel.motorType = goBildaType()
+        hood.motorType = goBildaType()
+        val robot = startRobot()
+
+        val warning = robot.warnings.single()
+        assertTrue(warning.startsWith("shooter.flywheel: its motor type, GoBILDA 5202/3/4 series"), warning)
+        assertTrue("Set shooter.flywheel.ticksPerTurn" in warning, warning)
     }
 
     @Test
@@ -109,7 +146,7 @@ class HardwareTest {
         turret.motorType.ticksPerRev = 0.0
         val robot = startRobot()
         val thrown = assertFailsWith<IllegalStateException> { robot.shooter.turret.position }
-        assertTrue("Pick its motor type in the robot configuration" in thrown.message!!, thrown.message)
+        assertTrue("Set shooter.turret.ticksPerTurn, or pick its motor type" in thrown.message!!, thrown.message)
     }
 
     @Test

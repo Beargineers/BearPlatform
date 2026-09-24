@@ -46,7 +46,7 @@ class FakeMotor {
     var mode = DcMotor.RunMode.RUN_USING_ENCODER
     var position = 0
     var ticksPerSecond = 0.0
-    val motorType = MotorConfigurationType().apply {
+    var motorType = MotorConfigurationType().apply {
         ticksPerRev = 384.5
         maxRPM = 435.0
         achieveableMaxRPMFraction = 1.0

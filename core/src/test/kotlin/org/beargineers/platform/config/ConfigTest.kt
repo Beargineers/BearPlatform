@@ -4,10 +4,13 @@ import org.beargineers.platform.geometry.Point
 import org.beargineers.platform.units.Distance
 import org.beargineers.platform.units.cm
 import org.beargineers.platform.units.degrees
+import org.beargineers.platform.units.inch
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -57,6 +60,11 @@ private class Arm(override val configScope: String, defaultPower: Double) : Conf
 
 private class ArmWithAngle(override val configScope: String) : ConfigScope {
     val power by config(90.degrees)
+}
+
+private class Mount {
+    val offset by optionalConfig<Distance>()
+    val tilt by optionalConfig(5.degrees)
 }
 
 class ConfigTest {
@@ -148,6 +156,23 @@ class ConfigTest {
 
         Config.load("NeedsGoal.goal = 10, -20")
         assertEquals(Point(10.cm, (-20).cm), needsGoal.goal)
+    }
+
+    @Test
+    fun optionalSettings() {
+        val mount = Mount()
+        assertNull(mount.offset)
+        assertEquals(5.degrees, mount.tilt)
+        assertTrue(Config.problems().none { "Mount" in it }, "an optional setting left out is no problem")
+
+        Config.load("Mount.offset = 3in\nMount.tilt = 7")
+        assertEquals(3.inch, mount.offset)
+        assertEquals(7.degrees, mount.tilt)
+
+        val offset = Config.declarations().single { it.key == "Mount.offset" }
+        assertTrue(offset.optional)
+        assertFalse(offset.isRequired)
+        assertNull(offset.defaultText)
     }
 
     @Test

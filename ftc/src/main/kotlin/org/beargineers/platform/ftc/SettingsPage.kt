@@ -49,7 +49,8 @@ internal object SettingsPage {
         val settingsHtml = if (declarations.isEmpty()) "" else buildString {
             append("<h2>Settings</h2><div class=\"scroll\"><table><tr><th>Key</th><th>Type</th><th>Default</th><th>In config</th></tr>")
             for (declaration in declarations) {
-                val default = declaration.defaultText?.let { "<code>${escape(it)}</code>" } ?: "<span class=\"warn\">required</span>"
+                val default = declaration.defaultText?.let { "<code>${escape(it)}</code>" }
+                    ?: if (declaration.isRequired) "<span class=\"warn\">required</span>" else "<span class=\"muted\">optional</span>"
                 val value = Config.valueText(declaration.key)?.let { "<code>${escape(it)}</code>" } ?: ""
                 append("<tr><td><code>${escape(declaration.key)}</code></td><td>${escape(declaration.type.name)}</td>")
                 append("<td>$default</td><td>$value</td></tr>")

@@ -46,7 +46,7 @@ class GammaRobot(host: RobotHost) : Robot(host) {
 ```
 
   Components `init()` before the first loop, `update()` every loop, and `stop()` at the end; parents before their
-  parts, siblings in creation order.
+  parts, siblings in creation order. `warn("...")` reports a problem worth fixing, which the opmode shows at INIT.
 
 - `runtime`: `LoopRuntime` runs coroutines on the robot loop, one step per `tick()`. Robot code is written as
   plain sequential `suspend` functions:
@@ -76,6 +76,7 @@ class Turret(parent: Component) : Component(parent) {
     val kP by config(0.02)                      // key: turret.kP
     val settleTime by config(300.milliseconds)
     val mode by config(TurretMode.FOLLOW)       // any enum works; a unique beginning like "FO" is enough
+    val limit by optionalConfig<Angle>()        // null unless the config text sets it
 }
 ```
 
@@ -128,12 +129,14 @@ Motors and servos are components too, so their settings live in config under the
 
 ```kotlin
 class Turret(parent: Component) : Component(parent) {
-    val motor = Motor(this, "turret", gearRatio = 121.0 / 16)  // turret.turret.direction, .brake, .gearRatio
-    val pinpoint by hardware<GoBildaPinpointDriver>()          // any other device from the robot configuration
+    // goBILDA 435 RPM: 384.5 ticks per turn of its shaft, from goBILDA's product page. Settings like
+    // turret.motor.direction, .brake, .ticksPerTurn and .gearRatio can be changed in config.
+    val motor = Motor(this, "motor", device = "turret", ticksPerTurn = 384.5, gearRatio = 121.0 / 16)
+    val pinpoint by hardware<GoBildaPinpointDriver>()  // any other device from the robot configuration
 
     override fun update() {
-        val angle = motor.position                             // an Angle at the turret, after the gearing
-        motor.power = 0.3                                      // only sent to the hub when it changes
+        val angle = motor.position                     // an Angle at the turret, after the gearing
+        motor.power = 0.3                              // only sent to the hub when it changes
     }
 }
 
@@ -143,6 +146,9 @@ class Shooter(parent: Component) : Component(parent) {
     val latchClosed by config(0.65)
 }
 ```
+
+Without `ticksPerTurn`, a motor uses the encoder resolution of the motor type picked in the robot configuration. The
+SDK's goBILDA type always has the 60 RPM model's numbers, so INIT warns about goBILDA motors without `ticksPerTurn`.
 
 Unit tests use fake devices (`ftc/src/test/.../FakeHardware.kt`), since the SDK's own device lookup needs the
 Control Hub.

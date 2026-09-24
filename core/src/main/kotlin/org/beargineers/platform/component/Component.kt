@@ -70,6 +70,16 @@ abstract class Component : ConfigScope {
     protected open fun stop() {}
 
     /**
+     * Reports a problem that doesn't stop the robot but should be fixed, like a doubtful hardware setting.
+     * The opmode shows it on the Driver Station during INIT, and it goes to the log.
+     */
+    protected fun warn(message: String) {
+        val warning = "${path.ifEmpty { name }}: $message"
+        robot.addWarning(warning)
+        runtime.log("Warning: $warning")
+    }
+
+    /**
      * Runs [block] in control of this component: stops whatever action controlled it before, and ends with
      * [Preempted][org.beargineers.platform.runtime.Preempted] if another action takes over. See [ExclusiveResource].
      */

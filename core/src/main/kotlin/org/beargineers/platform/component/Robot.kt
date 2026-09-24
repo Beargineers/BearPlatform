@@ -12,8 +12,17 @@ import kotlin.time.TimeSource
  * Settings declared in the robot class itself use the `robot` scope.
  */
 abstract class Robot(val host: RobotHost) : Component() {
+    private val reported = mutableListOf<String>()
+
+    /** Problems components reported with [warn], like doubtful hardware settings. The opmode shows them at INIT. */
+    val warnings: List<String> get() = reported.toList()
+
     init {
         host.runner.attach(this)
+    }
+
+    internal fun addWarning(warning: String) {
+        reported += warning
     }
 }
 

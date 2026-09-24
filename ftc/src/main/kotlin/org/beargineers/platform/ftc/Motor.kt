@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx
 import com.qualcomm.robotcore.hardware.DcMotorSimple.Direction
 import org.beargineers.platform.component.Component
 import org.beargineers.platform.config.config
+import org.beargineers.platform.config.optionalConfig
 import org.beargineers.platform.units.Angle
 import org.beargineers.platform.units.AngularVelocity
 import org.beargineers.platform.units.perSecond
@@ -14,11 +15,10 @@ import kotlin.math.roundToLong
 /**
  * A DC motor from the robot configuration, as a part of [parent]: `val fly1 = Motor(this, "fly1")`.
  *
- * Its direction, braking and gearing are config settings, so they can be fixed without rebuilding:
- * `shooter.fly1.direction = R`. The constructor arguments are the defaults.
+ * Its direction, braking, encoder resolution and gearing are config settings, so they can be fixed without
+ * rebuilding: `shooter.fly1.direction = R`. The constructor arguments are the defaults.
  *
- * Position and velocity are measured at the output, after the gearing, using the encoder resolution of the motor
- * type picked in the robot configuration.
+ * Position and velocity are measured at the output, after [gearRatio], using [ticksPerTurn].
  */
 class Motor(
     parent: Component,
@@ -27,6 +27,7 @@ class Motor(
     device: String = name,
     direction: Direction = Direction.FORWARD,
     brake: Boolean = true,
+    ticksPerTurn: Double? = null,
     gearRatio: Double = 1.0,
 ) : Component(parent, name) {
     val direction by config(direction)
@@ -34,7 +35,17 @@ class Motor(
     /** Whether the motor holds its position at zero power, instead of coasting */
     val brake by config(brake)
 
-    /** Motor turns per turn of what it drives, like 121.0 / 16 for a 16-tooth gear driving a 121-tooth one */
+    /**
+     * Encoder ticks per turn of the motor's own output shaft: the encoder resolution "at the output shaft" from the
+     * motor's product page, like 1425.1 for a goBILDA 117 RPM. When not set, it comes from the motor type picked in
+     * the robot configuration, which is right only for some motors: the SDK's goBILDA type is the 60 RPM model's.
+     */
+    val ticksPerTurn by optionalConfig(ticksPerTurn)
+
+    /**
+     * Turns of the motor's output shaft per turn of what it drives, for gears after the motor, like 121.0 / 16 for
+     * a 16-tooth gear driving a 121-tooth one
+     */
     val gearRatio by config(gearRatio)
 
     /** The SDK motor, for anything this class doesn't cover */
@@ -65,10 +76,6 @@ class Motor(
 
     val velocity: AngularVelocity get() = outputTurns(device.velocity).rotations.perSecond
 
-    /** The fastest the output can turn, according to the motor type */
-    val maxVelocity: AngularVelocity
-        get() = outputTurns(device.motorType.achieveableMaxTicksPerSecond).rotations.perSecond
-
     /** Makes the current position the new zero */
     fun resetPosition() {
         zeroTicks = device.currentPosition
@@ -79,6 +86,14 @@ class Motor(
         applySettings()
         resetPosition()
         device.power = 0.0
+
+        if (ticksPerTurn == null && device.motorType.xmlTag == GOBILDA_5202_SERIES) {
+            warn(
+                "its motor type, GoBILDA 5202/3/4 series, has the encoder resolution of the 60 RPM model only. " +
+                    "Set $configScope.ticksPerTurn to the resolution at the output shaft from the motor's product page, " +
+                    "like 1425.1 for 117 RPM or 384.5 for 435 RPM."
+            )
+        }
     }
 
     override fun update() {
@@ -101,10 +116,16 @@ class Motor(
     }
 
     private fun outputTurns(ticks: Double): Double {
-        val ticksPerTurn = device.motorType.ticksPerRev
+        val ticksPerTurn = ticksPerTurn ?: device.motorType.ticksPerRev
         check(ticksPerTurn > 0) {
-            "Motor ${describe()} doesn't know its encoder resolution. Pick its motor type in the robot configuration."
+            "Motor ${describe()} doesn't know its encoder resolution. " +
+                "Set $configScope.ticksPerTurn, or pick its motor type in the robot configuration."
         }
         return ticks / ticksPerTurn / gearRatio
+    }
+
+    private companion object {
+        /** The SDK's single type for all goBILDA Yellow Jacket motors, with the numbers of the 60 RPM one */
+        const val GOBILDA_5202_SERIES = "goBILDA5202SeriesMotor"
     }
 }

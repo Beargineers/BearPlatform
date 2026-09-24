@@ -16,7 +16,7 @@ import org.beargineers.platform.runtime.LoopRuntime
  * - [onStop] runs at the very end, after all coroutines and components have stopped.
  *
  * INIT loads the robot's config (see [RobotConfig]) and fails if a value can't be read. Other config problems,
- * like keys nothing uses, are shown on the Driver Station until START.
+ * like keys nothing uses, and warnings of the robot's components are shown on the Driver Station until START.
  *
  * Every loop reads the gamepads and all hub sensors (in one bulk read), updates the robot's components,
  * runs coroutines, and sends telemetry.
@@ -47,12 +47,14 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
         try {
             // Fails INIT, listing every value that can't be read, rather than failing in the middle of a match
             RobotConfig.onRobot(hardwareMap.appContext).loadForOpMode()
-            val configProblems = Config.problems()
-            configProblems.forEach { RobotLog.ww(LOG_TAG, "Config: %s", it) }
+            val configProblems = Config.problems().map { "Config: $it" }
+            configProblems.forEach { RobotLog.ww(LOG_TAG, "%s", it) }
 
             runner.init { onInit() }
+            // Components report their warnings while they initialize, and they are logged then
+            val problems = configProblems + runner.robot?.warnings.orEmpty()
             while (opModeInInit()) {
-                configProblems.forEach { telemetry.addLine("Config: $it") }
+                problems.forEach { telemetry.addLine(it) }
                 loopOnce(hubs)
             }
 
