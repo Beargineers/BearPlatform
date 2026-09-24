@@ -3,6 +3,7 @@ package org.beargineers.platform.component
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import org.beargineers.platform.runtime.LoopRuntime
+import org.beargineers.platform.telemetry.RobotTelemetry
 import kotlin.time.TimeSource
 
 /**
@@ -41,6 +42,9 @@ interface RobotHost {
  */
 class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -> Unit = {}) : RobotHost {
     val runtime = LoopRuntime(timeSource, log)
+
+    /** Driver Station lines, graphs and logs of this robot and its coroutines */
+    val telemetry = RobotTelemetry({ runtime.elapsed }, log)
 
     override val runner: RobotRunner get() = this
 

@@ -9,7 +9,7 @@ numbers, and nothing tied to a particular season.
 | Module | What                                                                                     |
 |--------|------------------------------------------------------------------------------------------|
 | `core` | Pure Kotlin/JVM, no FTC SDK. Everything here runs in unit tests on a laptop.              |
-| `ftc`  | Android library on top of the FTC SDK: `CoroutineOpMode`, hardware, gamepads.            |
+| `ftc`  | Android library on top of the FTC SDK: opmodes, hardware, gamepads, robot web pages.     |
 
 ### core
 
@@ -116,6 +116,15 @@ class Flywheel(parent: Component) : Component(parent) {
 }
 ```
 
+- `telemetry`: components and opmodes `show("Angle", motor.position)` lines on the Driver Station, `graph("turn
+  error", error)` values for the live graphs page, and `log("reached target")` messages. Once a second the Driver
+  Station lines also go to the log (`telemetry.logInterval`), so match logs show what the drivers saw.
+
+  Telemetry is cheap in fast loops. Lines are collected only every 100 ms (`telemetry.updateInterval`): in the loops
+  between, `show()` does nothing and values are never turned into text. For a value that is costly to make, pass a
+  block, which runs only when lines are collected: `show("Velocity") { "%.0f rpm".format(velocity.inRpm) }`. Graphs
+  keep at most one sample per 10 ms of each value.
+
 ### ftc
 
 ```kotlin
@@ -140,7 +149,9 @@ class Driving : CoroutineOpMode() {
 ```
 
 Every loop, `CoroutineOpMode` reads the gamepads and all hub sensors (in one bulk read), updates the robot's
-components, runs coroutines and sends telemetry. Handlers set up in `onInit` stop at START.
+components, runs coroutines and sends telemetry. Handlers set up in `onInit` stop at START. The Driver Station's
+first lines show loop time (*Loop: 2.4 ms average, 6.1 ms longest*) and the battery. Every loop's time is graphed as
+`loop ms`: a loop longer than 10 ms always shows up there.
 
 Motors and servos are components too, so their settings live in config under their parent's path:
 
@@ -182,7 +193,16 @@ running opmode, and stay on the robot until the next install; the page's *Downlo
 copying into the project. The page is served by the Control Hub's own web server, so it works with no opmode running.
 
 `scripts/updateConfig.sh` sends a config file to the robot the same way, and `scripts/downloadMatchLogs.sh`
-downloads the SDK's match logs.
+downloads the SDK's match logs. Over USB, run `adb forward tcp:8080 tcp:8080` and use `localhost:8080`
+(`ROBOT=http://localhost:8080` for the scripts).
+
+#### Graphs and battery
+
+`http://192.168.43.1:8080/bear/graphs` draws everything code records with `graph(...)`, live, one chart per value,
+and shows the Driver Station lines. It needs no internet, and shows the last opmode after it stops.
+
+Every opmode watches the battery: a `Battery: 12.6 V, lowest 12.1 V` line on the Driver Station, a `battery` graph,
+a warning at INIT below `battery.low` (12 V by default), and the lowest reading in the log at the end.
 
 ## Conventions
 
@@ -207,8 +227,9 @@ downloads the SDK's match logs.
    2. ~~gamepad input: `driver1`, `driver2` with buttons, triggers and sticks~~
    3. ~~config files on the robot and the settings web page~~
 6. ~~`core`: control (PID, feedforward, debouncer, hysteresis, slew rate)~~
-7. drivetrain, localization, path following
-8. Port a real robot onto the platform
+7. ~~telemetry: Driver Station lines, live graphs page, logs, battery~~
+8. drivetrain, localization, path following
+9. Port a real robot onto the platform
 
 ## Build
 

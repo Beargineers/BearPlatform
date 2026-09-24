@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import org.beargineers.platform.config.ConfigScope
 import org.beargineers.platform.runtime.ExclusiveResource
 import org.beargineers.platform.runtime.LoopRuntime
+import org.beargineers.platform.telemetry.RobotTelemetry
 
 /**
  * A part of the robot: a subsystem like the intake, or a piece of one like the shooter's latch.
@@ -76,8 +77,25 @@ abstract class Component : ConfigScope {
     protected fun warn(message: String) {
         val warning = "${path.ifEmpty { name }}: $message"
         robot.addWarning(warning)
-        runtime.log("Warning: $warning")
+        telemetry.log("Warning: $warning")
     }
+
+    /**
+     * Shows "label: value" on the Driver Station and the robot's graphs page, for this loop. Lines are only collected
+     * every few loops; in the others this does nothing, and [value] is never turned into text.
+     */
+    fun show(label: String, value: Any?) = telemetry.show(label, value)
+
+    /** Shows "label: value", computing the value only in loops that collect lines: for values expensive to make */
+    inline fun show(label: String, value: () -> Any?) = robot.host.runner.telemetry.show(label, value)
+
+    /** Records [value] under [name] for the live graphs on the robot's web page */
+    fun graph(name: String, value: Double) = telemetry.graph(name, value)
+
+    /** Writes [message] to the robot's log, after this component's path */
+    fun log(message: String) = telemetry.log("${path.ifEmpty { name }}: $message")
+
+    private val telemetry: RobotTelemetry get() = robot.host.runner.telemetry
 
     /**
      * Runs [block] in control of this component: stops whatever action controlled it before, and ends with

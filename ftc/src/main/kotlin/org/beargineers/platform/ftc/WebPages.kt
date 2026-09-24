@@ -24,9 +24,10 @@ import java.util.zip.ZipOutputStream
  * Pages served by the Control Hub's own web server, so they work whenever the robot is on, opmode or not:
  * - `http://192.168.43.1:8080/bear/config` edits the config; changes take effect right away.
  * - `/bear/config.properties` gets (GET) or replaces (POST, `text/plain`) the config text, for scripts.
+ * - `/bear/graphs` draws live graphs of what code records with `graph(...)`, and shows the Driver Station lines.
  * - `/bear/matchLogs` downloads the SDK's match logs as a zip, and deletes them from the robot.
  */
-object SettingsWebPages {
+object WebPages {
     @WebHandlerRegistrar
     @JvmStatic
     fun register(context: Context, manager: WebHandlerManager) {
@@ -41,6 +42,15 @@ object SettingsWebPages {
         manager.register(SettingsPage.PATH) { session -> configPage(config, session, log) }
         manager.register(SettingsPage.RESET_PATH) { session -> resetConfig(config, session, log) }
         manager.register(SettingsPage.RAW_PATH) { session -> rawConfig(config, session, log) }
+        manager.register(GraphsPage.PATH) { html(Status.OK, GraphsPage.html()) }
+        manager.register(GraphsPage.DATA_PATH) { session -> graphsData(session) }
+    }
+
+    private fun graphsData(session: IHTTPSession): Response {
+        val since = session.parameters["since"]?.firstOrNull()?.toLongOrNull() ?: 0L
+        val data = GraphsPage.data(LiveTelemetry.current, LiveTelemetry.run, LiveTelemetry.running, since)
+        return NanoHTTPD.newFixedLengthResponse(Status.OK, "application/json; charset=UTF-8", data)
+            .apply { addHeader("Cache-Control", "no-store") }
     }
 
     private fun configPage(config: RobotConfig, session: IHTTPSession, log: (String) -> Unit): Response {

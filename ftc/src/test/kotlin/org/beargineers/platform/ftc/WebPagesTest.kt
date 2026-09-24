@@ -20,7 +20,7 @@ private class Lift {
     val height by config(10.cm)
 }
 
-class SettingsWebPagesTest {
+class WebPagesTest {
     private val directory = Files.createTempDirectory("bear-config").toFile()
     private val config = RobotConfig(ConfigFiles(directory, "1") { "Lift.height = 12" })
     private val log = mutableListOf<String>()
@@ -33,7 +33,7 @@ class SettingsWebPagesTest {
         val manager: WebHandlerManager = fake { method, args ->
             if (method == "register") handlers[args[0] as String] = args[1] as WebHandler else Unanswered
         }
-        SettingsWebPages.registerPages(manager, config) { log += it }
+        WebPages.registerPages(manager, config) { log += it }
     }
 
     @AfterTest

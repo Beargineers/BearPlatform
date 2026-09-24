@@ -71,6 +71,7 @@ internal object SettingsPage {
             |</style>
             |</head>
             |<body>
+            |${nav(PATH)}
             |<h1>Robot config</h1>
             |<p class="muted">Using the config $source.
             |  <a href="$RAW_PATH" download="config.properties">Download it</a> to copy edits into the project.</p>
@@ -110,6 +111,11 @@ internal object SettingsPage {
         }
     }
 
+    /** Links between the robot's pages, with the current one, at [path], not linked */
+    fun nav(path: String): String = listOf(PATH to "Config", GraphsPage.PATH to "Graphs").joinToString(
+        " · ", "<p class=\"muted\">", "</p>"
+    ) { (target, title) -> if (target == path) "<strong>$title</strong>" else "<a href=\"$target\">$title</a>" }
+
     fun escape(text: String): String = text
         .replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -118,12 +124,13 @@ internal object SettingsPage {
 
     private fun list(items: List<String>) = items.joinToString("", "<ul>", "</ul>") { "<li>${escape(it)}</li>" }
 
-    private val STYLE = """
+    /** Styles shared by the robot's pages */
+    internal val STYLE = """
         :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #ffffff; --muted: #6e6e73; --line: #d2d2d7;
-                --ok: #1a7f37; --bad: #c62828; --warn: #9a6700; }
+                --ok: #1a7f37; --bad: #c62828; --warn: #9a6700; --accent: #2f6fde; }
         @media (prefers-color-scheme: dark) {
           :root { --fg: #f5f5f7; --bg: #161618; --muted: #a1a1a6; --line: #3a3a3c;
-                  --ok: #3fb950; --bad: #ff6b6b; --warn: #d29922; }
+                  --ok: #3fb950; --bad: #ff6b6b; --warn: #d29922; --accent: #6ea8ff; }
         }
         body { font: 15px/1.45 system-ui, sans-serif; color: var(--fg); background: var(--bg);
                max-width: 960px; margin: 0 auto; padding: 16px; }
