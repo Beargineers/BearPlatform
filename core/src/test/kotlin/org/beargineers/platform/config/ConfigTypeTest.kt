@@ -117,6 +117,8 @@ class ConfigTypeTest {
     @Test
     fun formatIsReadable() {
         assertEquals("30cm", Config.typeOf(Distance::class).format(30.cm))
+        assertEquals("0.00036", Config.typeOf(Double::class).format(0.00036))
+        assertEquals("2", Config.typeOf(Double::class).format(2.0))
         assertEquals("10cm, 20cm, 90deg", Config.typeOf(Pose::class).format(Pose(10.cm, 20.cm, 90.degrees)))
         assertEquals("300ms", Config.typeOf(Duration::class).format(300.milliseconds))
     }

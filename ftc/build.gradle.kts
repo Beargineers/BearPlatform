@@ -41,6 +41,7 @@ dependencies {
     // The season app brings the FTC SDK, so compile against it without forcing a version on the app
     compileOnly("org.firstinspires.ftc:RobotCore:$ftcSdkVersion")
     compileOnly("org.firstinspires.ftc:Hardware:$ftcSdkVersion")
+    compileOnly("org.firstinspires.ftc:FtcCommon:$ftcSdkVersion")
 
     testImplementation(kotlin("test-junit"))
     testImplementation("org.firstinspires.ftc:RobotCore:$ftcSdkVersion")

@@ -34,8 +34,12 @@ class ExclusiveResource(val name: String) {
 
     /**
      * Takes control of this resource and runs [block], after stopping the action that was in control before
-     * and letting it finish its cleanup. Calling [takeOver] again from inside [block] (for example `driveTo()`
-     * from inside `drivePath()`) keeps control and does not interrupt anything.
+     * and letting it finish its cleanup. [action] is only a label for logs and [currentAction]: any [takeOver]
+     * stops the previous action, whatever the labels.
+     *
+     * Calling [takeOver] again from inside [block] (for example `driveTo()` from inside `drivePath()`) keeps control
+     * and does not interrupt anything. That includes coroutines launched inside [block]: they share control with it,
+     * so two of them driving at the same time would fight each other.
      */
     suspend fun <T> takeOver(action: String, block: suspend CoroutineScope.() -> T): T {
         if (currentCoroutineContext()[key] != null) return coroutineScope(block)

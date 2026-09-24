@@ -29,7 +29,7 @@ class ConfigType<T : Any>(
 
 internal fun standardConfigTypes(): Map<KClass<*>, ConfigType<*>> = mapOf(
     Int::class to ConfigType("whole number", { it.trim().toIntOrNull() ?: fail("expected a whole number") }),
-    Double::class to ConfigType("number", { it.trim().toDoubleOrNull() ?: fail("expected a number") }),
+    Double::class to ConfigType("number", { it.trim().toDoubleOrNull() ?: fail("expected a number") }, ::formatNumber),
     Boolean::class to ConfigType("true/false", ::parseBoolean),
     String::class to ConfigType("text", { it }),
     Distance::class to ConfigType("distance", ::parseDistance, ::formatDistance),
@@ -129,8 +129,12 @@ private fun parsePose(text: String): Pose {
     return Pose(parseDistance(parts[0]), parseDistance(parts[1]), parseAngle(parts[2]))
 }
 
-private fun formatNumber(value: Double): String =
-    if (value == Math.rint(value) && kotlin.math.abs(value) < 1e15) value.toLong().toString() else value.toString()
+private fun formatNumber(value: Double): String = when {
+    !value.isFinite() -> value.toString()
+    value == Math.rint(value) && kotlin.math.abs(value) < 1e15 -> value.toLong().toString()
+    // Plain digits: 0.00036 rather than 3.6E-4
+    else -> java.math.BigDecimal(value.toString()).toPlainString()
+}
 
 private fun formatDistance(distance: Distance) = formatNumber(distance.inCm) + "cm"
 

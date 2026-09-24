@@ -1,0 +1,124 @@
+package org.beargineers.platform.ftc
+
+import org.beargineers.platform.config.Config
+
+/** The config page of the settings web pages. Plain HTML, since whoever opens it is on the robot's WiFi, offline. */
+internal object SettingsPage {
+    const val PATH = "/bear/config"
+    const val RAW_PATH = "/bear/config.properties"
+    const val RESET_PATH = "/bear/config/reset"
+    const val MATCH_LOGS_PATH = "/bear/matchLogs"
+
+    sealed interface Outcome {
+        object Saved : Outcome
+        object Reset : Outcome
+        class Rejected(val problems: List<String>) : Outcome
+    }
+
+    /** The page showing [text] in the editor: the config in effect, or what was posted if [outcome] rejected it */
+    fun html(config: RobotConfig, outcome: Outcome? = null, text: String = config.text): String {
+        val declarations = Config.declarations()
+        val source = if (config.isEdited) "edited on the robot since this build was installed" else "bundled with the app"
+
+        val outcomeHtml = when (outcome) {
+            null -> ""
+            Outcome.Saved -> """<p class="ok">Saved. The new values are in effect now and stay until the next install.</p>"""
+            Outcome.Reset -> """<p class="ok">Back to the config bundled with the app.</p>"""
+            is Outcome.Rejected -> """
+                <div class="bad"><p>Not saved: some values can't be read. The robot keeps using its previous config.</p>
+                ${list(outcome.problems)}</div>
+            """.trimIndent()
+        }
+
+        val problemsHtml = if (declarations.isEmpty()) {
+            """<p class="muted">Run an opmode to see the settings its robot has, and to have values checked.</p>"""
+        } else {
+            Config.problems().takeIf { it.isNotEmpty() }?.let { """<div class="warn">${list(it)}</div>""" } ?: ""
+        }
+
+        val resetHtml = if (!config.isEdited) "" else """
+            <form method="post" action="$RESET_PATH" onsubmit="return confirm('Throw away the edits made on the robot?')">
+              <button type="submit">Go back to the bundled config</button>
+            </form>
+        """.trimIndent()
+
+        val settingsHtml = if (declarations.isEmpty()) "" else buildString {
+            append("<h2>Settings</h2><div class=\"scroll\"><table><tr><th>Key</th><th>Type</th><th>Default</th><th>In config</th></tr>")
+            for (declaration in declarations) {
+                val default = declaration.defaultText?.let { "<code>${escape(it)}</code>" } ?: "<span class=\"warn\">required</span>"
+                val value = Config.valueText(declaration.key)?.let { "<code>${escape(it)}</code>" } ?: ""
+                append("<tr><td><code>${escape(declaration.key)}</code></td><td>${escape(declaration.type.name)}</td>")
+                append("<td>$default</td><td>$value</td></tr>")
+            }
+            append("</table></div>")
+        }
+
+        // trimMargin rather than trimIndent: the inserted parts span several lines with their own indentation
+        return """
+            |<!DOCTYPE html>
+            |<html lang="en">
+            |<head>
+            |<meta charset="utf-8">
+            |<meta name="viewport" content="width=device-width, initial-scale=1">
+            |<title>Robot config</title>
+            |<style>
+            |$STYLE
+            |</style>
+            |</head>
+            |<body>
+            |<h1>Robot config</h1>
+            |<p class="muted">Using the config $source.
+            |  <a href="$RAW_PATH" download="config.properties">Download it</a> to copy edits into the project.</p>
+            |$outcomeHtml
+            |$problemsHtml
+            |<form method="post" action="$PATH">
+            |  <textarea name="settings" id="settings" spellcheck="false">$TEXT_PLACEHOLDER</textarea>
+            |  <div class="row"><button type="submit">Save</button>
+            |    <span id="unsaved" class="warn"${if (outcome is Outcome.Rejected) "" else " hidden"}>Not saved yet</span></div>
+            |</form>
+            |$resetHtml
+            |$settingsHtml
+            |<script>
+            |  document.getElementById('settings').addEventListener('input', function () {
+            |    document.getElementById('unsaved').hidden = false;
+            |  });
+            |</script>
+            |</body>
+            |</html>
+        """.trimMargin().replace(TEXT_PLACEHOLDER, escape(text)) // after trimMargin, which must not touch the config text
+    }
+
+    private const val TEXT_PLACEHOLDER = "\u0000config-text\u0000"
+
+    fun escape(text: String): String = text
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+
+    private fun list(items: List<String>) = items.joinToString("", "<ul>", "</ul>") { "<li>${escape(it)}</li>" }
+
+    private val STYLE = """
+        :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #ffffff; --muted: #6e6e73; --line: #d2d2d7;
+                --ok: #1a7f37; --bad: #c62828; --warn: #9a6700; }
+        @media (prefers-color-scheme: dark) {
+          :root { --fg: #f5f5f7; --bg: #161618; --muted: #a1a1a6; --line: #3a3a3c;
+                  --ok: #3fb950; --bad: #ff6b6b; --warn: #d29922; }
+        }
+        body { font: 15px/1.45 system-ui, sans-serif; color: var(--fg); background: var(--bg);
+               max-width: 960px; margin: 0 auto; padding: 16px; }
+        textarea { width: 100%; min-height: 24em; box-sizing: border-box; padding: 8px; color: inherit;
+                   background: transparent; border: 1px solid var(--line); border-radius: 6px;
+                   font: 13px/1.4 ui-monospace, Menlo, monospace; }
+        code { font-family: ui-monospace, Menlo, monospace; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; }
+        th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+        button { font: inherit; padding: 6px 14px; }
+        .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0 16px; }
+        .scroll { overflow-x: auto; }
+        .muted { color: var(--muted); }
+        .ok { color: var(--ok); }
+        .bad { color: var(--bad); }
+        .warn { color: var(--warn); }
+    """.trimIndent()
+}

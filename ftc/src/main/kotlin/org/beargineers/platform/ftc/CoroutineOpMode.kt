@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode
 import com.qualcomm.robotcore.util.RobotLog
 import kotlinx.coroutines.CoroutineScope
 import org.beargineers.platform.component.RobotRunner
+import org.beargineers.platform.config.Config
 import org.beargineers.platform.runtime.LoopRuntime
 
 /**
@@ -13,6 +14,9 @@ import org.beargineers.platform.runtime.LoopRuntime
  * - [onInit] runs from INIT until START, e.g. for menus or picking the starting pose. START cancels it.
  * - [onStart] runs from START until the opmode ends.
  * - [onStop] runs at the very end, after all coroutines and components have stopped.
+ *
+ * INIT loads the robot's config (see [RobotConfig]) and fails if a value can't be read. Other config problems,
+ * like keys nothing uses, are shown on the Driver Station until START.
  *
  * Every loop reads the gamepads and all hub sensors (in one bulk read), updates the robot's components,
  * runs coroutines, and sends telemetry.
@@ -41,8 +45,16 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
         for (hub in hubs) hub.bulkCachingMode = LynxModule.BulkCachingMode.MANUAL
 
         try {
+            // Fails INIT, listing every value that can't be read, rather than failing in the middle of a match
+            RobotConfig.onRobot(hardwareMap.appContext).loadForOpMode()
+            val configProblems = Config.problems()
+            configProblems.forEach { RobotLog.ww(LOG_TAG, "Config: %s", it) }
+
             runner.init { onInit() }
-            while (opModeInInit()) loopOnce(hubs)
+            while (opModeInInit()) {
+                configProblems.forEach { telemetry.addLine("Config: $it") }
+                loopOnce(hubs)
+            }
 
             if (opModeIsActive()) {
                 runner.start { onStart() }

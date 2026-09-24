@@ -181,10 +181,12 @@ class ConfigTest {
     @Test
     fun problemsPointOutTypos() {
         Shooter()
-        Config.load("Shooter.kv = 1\nkV = 2")
+        Config.load("Shooter.kv = 1\nkV = 2\nShooter.spnUp = 1s\nShooter.somethingElse = 3")
         val problems = Config.problems()
         assertTrue("Shooter.kv is set but nothing uses it. Did you mean Shooter.kV?" in problems, "$problems")
         assertTrue("kV is set but nothing uses it. Did you mean Shooter.kV?" in problems, "$problems")
+        assertTrue("Shooter.spnUp is set but nothing uses it. Did you mean Shooter.spinUp?" in problems, "$problems")
+        assertTrue("Shooter.somethingElse is set but nothing uses it" in problems, "$problems")
     }
 
     @Test

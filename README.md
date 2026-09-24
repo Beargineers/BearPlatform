@@ -58,7 +58,8 @@ suspend fun GammaRobot.collectAndShoot() = withName("Collect and shoot") {
     shooter.shoot()
 }
 
-suspend fun Drive.driveTo(target: Pose) = takeOver("driveTo $target") {  // stops any other drive action
+// The label is just for logs: any new takeOver of the drive stops the action before it, whatever the target
+suspend fun Drive.driveTo(target: Pose) = takeOver("driveTo $target") {
     while (!isAt(target)) {
         followTowards(target)
         nextTick()
@@ -146,6 +147,20 @@ class Shooter(parent: Component) : Component(parent) {
 Unit tests use fake devices (`ftc/src/test/.../FakeHardware.kt`), since the SDK's own device lookup needs the
 Control Hub.
 
+#### Config on the robot
+
+The app's config is `res/raw/config.properties` of the season app module. Every opmode loads it at INIT and checks
+it against the settings its robot declares: a value that can't be read fails INIT with a list of all such values,
+and other problems (like keys nothing uses) show on the Driver Station until START.
+
+With the laptop on the robot's WiFi, `http://192.168.43.1:8080/bear/config` shows the config with every setting the
+robot has, their defaults, and problems like typos in keys. Edits saved there take effect right away, even in a
+running opmode, and stay on the robot until the next install; the page's *Download* link gets the edited file for
+copying into the project. The page is served by the Control Hub's own web server, so it works with no opmode running.
+
+`scripts/updateConfig.sh` sends a config file to the robot the same way, and `scripts/downloadMatchLogs.sh`
+downloads the SDK's match logs.
+
 ## Conventions
 
 - **Field coordinates** follow the FTC field coordinate system: origin at the field center, heading 0 faces +x,
@@ -167,7 +182,7 @@ Control Hub.
 5. `ftc`
    1. ~~hardware: `Motor` and `PositionServo` with units and config settings, `hardware<T>()` for other devices~~
    2. ~~gamepad input: `driver1`, `driver2` with buttons, triggers and sticks~~
-   3. config files on the robot and the settings web page
+   3. ~~config files on the robot and the settings web page~~
 6. `ftc`: drivetrain, localization, path following
 7. Port a real robot onto the platform
 

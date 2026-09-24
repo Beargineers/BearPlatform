@@ -54,6 +54,9 @@ object Config {
     /** Settings declared by the code created so far, sorted by key */
     fun declarations(): List<Declaration<*>> = declarations.values.sortedBy { it.key }
 
+    /** The value [key] has in the config text, as written there, or null if the text doesn't set it */
+    fun valueText(key: String): String? = snapshot.values[key]
+
     /**
      * Human-readable problems with the current config: values that can't be read, required settings without a value,
      * and keys that no declared setting uses, which usually are typos. Ask after the robot is fully created,
@@ -136,6 +139,25 @@ object Config {
         val name = key.substringAfterLast('.')
         return keys.firstOrNull { it.equals(key, ignoreCase = true) }
             ?: keys.firstOrNull { it.substringAfterLast('.').equals(name, ignoreCase = true) }
+            ?: keys.map { it to editDistance(it.lowercase(), key.lowercase()) }
+                .filter { (_, distance) -> distance <= 2 }
+                .minByOrNull { (_, distance) -> distance }
+                ?.first
+    }
+
+    /** How many single letters have to be added, removed or replaced to turn [a] into [b] */
+    private fun editDistance(a: String, b: String): Int {
+        var previous = IntArray(b.length + 1) { it }
+        for (i in 1..a.length) {
+            val current = IntArray(b.length + 1)
+            current[0] = i
+            for (j in 1..b.length) {
+                val replace = previous[j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1
+                current[j] = minOf(previous[j] + 1, current[j - 1] + 1, replace)
+            }
+            previous = current
+        }
+        return previous[b.length]
     }
 
     private fun parseProperties(text: String): Map<String, String> {
