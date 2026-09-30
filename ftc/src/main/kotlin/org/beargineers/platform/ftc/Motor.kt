@@ -37,8 +37,11 @@ class Motor(
 
     /**
      * Encoder ticks per turn of the motor's own output shaft: the encoder resolution "at the output shaft" from the
-     * motor's product page, like 1425.1 for a goBILDA 117 RPM. When not set, it comes from the motor type picked in
-     * the robot configuration, which is right only for some motors: the SDK's goBILDA type is the 60 RPM model's.
+     * motor's product page, like 1425.1 for a goBILDA 117 RPM. [position] and [velocity] need it; a motor whose encoder
+     * isn't used doesn't.
+     *
+     * The motor type in the robot configuration isn't used for it, as it is wrong for most current motors: the SDK's
+     * goBILDA type has the 60 RPM model's numbers, and its REV UltraPlanetary type assumes a 20:1 gearbox.
      */
     val ticksPerTurn by optionalConfig(ticksPerTurn)
 
@@ -86,14 +89,6 @@ class Motor(
         applySettings()
         resetPosition()
         device.power = 0.0
-
-        if (ticksPerTurn == null && device.motorType.xmlTag == GOBILDA_5202_SERIES) {
-            warn(
-                "its motor type, GoBILDA 5202/3/4 series, has the encoder resolution of the 60 RPM model only. " +
-                    "Set $configScope.ticksPerTurn to the resolution at the output shaft from the motor's product page, " +
-                    "like 1425.1 for 117 RPM or 384.5 for 435 RPM."
-            )
-        }
     }
 
     override fun update() {
@@ -116,16 +111,11 @@ class Motor(
     }
 
     private fun outputTurns(ticks: Double): Double {
-        val ticksPerTurn = ticksPerTurn ?: device.motorType.ticksPerRev
-        check(ticksPerTurn > 0) {
-            "Motor ${describe()} doesn't know its encoder resolution. " +
-                "Set $configScope.ticksPerTurn, or pick its motor type in the robot configuration."
-        }
+        val ticksPerTurn = ticksPerTurn?.takeIf { it > 0 } ?: error(
+            "Motor ${describe()} needs its encoder resolution to measure position or velocity. " +
+                "Set $configScope.ticksPerTurn to the resolution at the output shaft from the motor's product page, " +
+                "like 1425.1 for goBILDA 117 RPM, 384.5 for goBILDA 435 RPM or 288 for REV Core Hex."
+        )
         return ticks / ticksPerTurn / gearRatio
-    }
-
-    private companion object {
-        /** The SDK's single type for all goBILDA Yellow Jacket motors, with the numbers of the 60 RPM one */
-        const val GOBILDA_5202_SERIES = "goBILDA5202SeriesMotor"
     }
 }

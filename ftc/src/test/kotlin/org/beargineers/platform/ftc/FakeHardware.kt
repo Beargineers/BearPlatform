@@ -6,7 +6,6 @@ import com.qualcomm.robotcore.hardware.DcMotorEx
 import com.qualcomm.robotcore.hardware.DcMotorSimple
 import com.qualcomm.robotcore.hardware.HardwareMap
 import com.qualcomm.robotcore.hardware.Servo
-import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType
 import org.beargineers.platform.component.RobotRunner
 import java.lang.reflect.Proxy
 import kotlin.time.TestTimeSource
@@ -31,7 +30,8 @@ class FakeHardwareMap : HardwareMap(null, null) {
 /** An [FtcHost] with an empty robot configuration; add fake devices to [hardware] */
 class TestFtcHost(hardwareAvailable: Boolean = true) : FtcHost {
     val hardware = FakeHardwareMap()
-    override val runner = RobotRunner(TestTimeSource())
+    val time = TestTimeSource()
+    override val runner = RobotRunner(time)
     override val opMode: OpMode = object : OpMode() {
         override fun init() {}
         override fun loop() {}
@@ -46,11 +46,6 @@ class FakeMotor {
     var mode = DcMotor.RunMode.RUN_USING_ENCODER
     var position = 0
     var ticksPerSecond = 0.0
-    var motorType = MotorConfigurationType().apply {
-        ticksPerRev = 384.5
-        maxRPM = 435.0
-        achieveableMaxRPMFraction = 1.0
-    }
 
     val device: DcMotorEx = fake { method, args ->
         when (method) {
@@ -65,7 +60,6 @@ class FakeMotor {
             "setMode" -> mode = args[0] as DcMotor.RunMode
             "getCurrentPosition" -> position
             "getVelocity" -> if (args.isEmpty()) ticksPerSecond else Unanswered
-            "getMotorType" -> motorType
             else -> Unanswered
         }
     }

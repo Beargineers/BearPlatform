@@ -175,11 +175,35 @@ class Shooter(parent: Component) : Component(parent) {
 }
 ```
 
-Without `ticksPerTurn`, a motor uses the encoder resolution of the motor type picked in the robot configuration. The
-SDK's goBILDA type always has the 60 RPM model's numbers, so INIT warns about goBILDA motors without `ticksPerTurn`.
+`position` and `velocity` need `ticksPerTurn`, and fail without it, telling what to set; motors whose encoders
+aren't used need nothing. The motor type picked in the robot configuration isn't used for it, as it is wrong for most
+current motors: the SDK's goBILDA type always has the 60 RPM model's numbers, and its REV UltraPlanetary type assumes
+a 20:1 gearbox.
 
 Unit tests use fake devices (`ftc/src/test/.../FakeHardware.kt`), since the SDK's own device lookup needs the
 Control Hub.
+
+#### Drivetrain
+
+```kotlin
+class GammaRobot(host: FtcHost) : Robot(host) {
+    // Motors leftFront, rightFront, leftBack, rightBack in the robot configuration
+    val drive = MecanumDrive(this)
+}
+
+// TeleOp
+everyTick { robot.drive.driveWith(driver1.leftStick, driver1.rightStick.x) }
+driver1.back.onPress { robot.drive.checkWheels() }   // each wheel in turn, to check directions and ports
+```
+
+`driveWith` drives robot-centric: the left stick moves, the right stick turns. When an action drives the robot, like
+driving to a target, pushing a stick past halfway stops the action, and a thumb resting on a stick doesn't.
+Code can also drive with powers relative to the robot, `drive.drive(forward = 0.5, right = 0.2, turn = 0.1)`, where
+turn is counterclockwise like all angles. Settings: `drive.maxPower` scales everything down (0.3 for the first tries),
+`drive.strafeScale` makes up for mecanum wheels slipping sideways, and each motor's `drive.leftFront.direction` etc.
+
+`MecanumDrive` is a `Drivetrain`, which is what teleop driving and path following use. Other kinds, like tank or
+swerve, would be other `Drivetrain`s: a tank drive can't strafe (`canStrafe` false) and ignores `right`.
 
 #### Config on the robot
 
@@ -228,7 +252,10 @@ a warning at INIT below `battery.low` (12 V by default), and the lowest reading 
    3. ~~config files on the robot and the settings web page~~
 6. ~~`core`: control (PID, feedforward, debouncer, hysteresis, slew rate)~~
 7. ~~telemetry: Driver Station lines, live graphs page, logs, battery~~
-8. drivetrain, localization, path following
+8. driving
+   1. drivetrain: `Drivetrain`, `MecanumDrive`, teleop driving
+   2. localization: Pinpoint odometry, field-centric driving
+   3. path following
 9. Port a real robot onto the platform
 
 ## Build
