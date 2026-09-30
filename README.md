@@ -125,6 +125,9 @@ class Flywheel(parent: Component) : Component(parent) {
   block, which runs only when lines are collected: `show("Velocity") { "%.0f rpm".format(velocity.inRpm) }`. Graphs
   keep at most one sample per 10 ms of each value.
 
+- `drive` and `localization`: the `Drivetrain` and `Localizer` components that teleop driving and path following use;
+  the FTC implementations, `MecanumDrive` and `PinpointLocalizer`, are in `ftc` (below).
+
 ### ftc
 
 ```kotlin
@@ -205,6 +208,35 @@ turn is counterclockwise like all angles. Settings: `drive.maxPower` scales ever
 `MecanumDrive` is a `Drivetrain`, which is what teleop driving and path following use. Other kinds, like tank or
 swerve, would be other `Drivetrain`s: a tank drive can't strafe (`canStrafe` false) and ignores `right`.
 
+#### Localization
+
+```kotlin
+class GammaRobot(host: FtcHost) : Robot(host) {
+    val localizer = PinpointLocalizer(this)             // first, so it updates before anything drives by it
+    val drive = MecanumDrive(this)
+}
+
+robot.localizer.pose = DecodeField.tile("A1BL").withHeading(0.degrees)   // the starting pose, in autonomous
+val here = robot.localizer.pose                                           // every loop: x, y and heading
+
+// Field-centric TeleOp: pushing forward drives away from the drivers, whichever way the robot faces
+everyTick {
+    robot.drive.driveWith(driver1.leftStick, driver1.rightStick.x,
+        robot.localizer.pose.heading, DecodeField.driversFace(alliance))
+}
+```
+
+`PinpointLocalizer` reads goBILDA's Pinpoint every loop. Its settings, with goBILDA's signs:
+`localizer.forwardPodLeft` and `localizer.strafePodForward` (required: where the pods are), `localizer.pods` (FOUR_BAR
+or SWINGARM), the pod directions and `localizer.yawScalar`. They can be tuned live on the settings page. INIT
+calibrates the Pinpoint's gyro with the robot standing still; the Driver Station shows the Pinpoint's problems, like a
+pod not plugged in. The pose carries over from one opmode to the next (`Localizer.lastPose`), so TeleOp starts where
+autonomous ended. Graphs: `x cm`, `y cm`, `heading deg`.
+
+Field-centric driving needs the season's `Field` to say where the drivers stand: `redStation`, like
+`FieldDirection.AUDIENCE_LEFT` in DECODE. Without a localizer, pass the heading the robot had when pointing away from
+the drivers instead of `driversFace`.
+
 #### Config on the robot
 
 The app's config is `res/raw/config.properties` of the season app module. Every opmode loads it at INIT and checks
@@ -253,8 +285,8 @@ a warning at INIT below `battery.low` (12 V by default), and the lowest reading 
 6. ~~`core`: control (PID, feedforward, debouncer, hysteresis, slew rate)~~
 7. ~~telemetry: Driver Station lines, live graphs page, logs, battery~~
 8. driving
-   1. drivetrain: `Drivetrain`, `MecanumDrive`, teleop driving
-   2. localization: Pinpoint odometry, field-centric driving
+   1. ~~drivetrain: `Drivetrain`, `MecanumDrive`, teleop driving~~
+   2. ~~localization: Pinpoint odometry, field-centric driving~~
    3. path following
 9. Port a real robot onto the platform
 

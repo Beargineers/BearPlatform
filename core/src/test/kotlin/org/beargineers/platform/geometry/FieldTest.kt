@@ -58,6 +58,17 @@ class FieldTest {
     }
 
     @Test
+    fun driversFaceAwayFromTheirWall() {
+        // DECODE: red drivers on the audience's left pushed the stick forward to drive toward +y
+        val field = Field(FieldDirection.TOWARD_AUDIENCE, FieldSymmetry.FLIP_Y, redStation = FieldDirection.AUDIENCE_LEFT)
+        assertClose(90.degrees.toHeading(), field.driversFace(Alliance.RED))
+        assertClose((-90).degrees.toHeading(), field.driversFace(Alliance.BLUE))
+
+        val thrown = assertFailsWith<IllegalStateException> { decode.driversFace(Alliance.RED) }
+        assertTrue("redStation" in thrown.message!!, thrown.message)
+    }
+
+    @Test
     fun bounds() {
         assertTrue(decode.contains(decode.tile("F6TR")))
         assertFalse(decode.contains(Point(73.inch, 0.cm)))

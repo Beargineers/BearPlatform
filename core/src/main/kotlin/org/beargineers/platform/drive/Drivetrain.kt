@@ -3,6 +3,9 @@ package org.beargineers.platform.drive
 import org.beargineers.platform.component.Component
 import org.beargineers.platform.input.Axis
 import org.beargineers.platform.input.Stick
+import org.beargineers.platform.units.Heading
+import org.beargineers.platform.units.cos
+import org.beargineers.platform.units.sin
 import kotlin.math.abs
 
 /**
@@ -36,13 +39,32 @@ abstract class Drivetrain(parent: Component, name: String) : Component(parent, n
      * [takeOverAbove]: then the action stops and the sticks drive. A thumb resting on a stick doesn't stop it.
      */
     fun driveWith(move: Stick, turn: Axis, takeOverAbove: Double = 0.5) {
-        val forward = move.y.value
-        val right = move.x.value
-        val counterclockwise = -turn.value
-        if (isBusy) {
-            if (maxOf(abs(forward), abs(right), abs(counterclockwise)) <= takeOverAbove) return
-            cancelAction()
-        }
-        drive(forward, right, counterclockwise)
+        if (leftToAction(move, turn, takeOverAbove)) return
+        drive(forward = move.y.value, right = move.x.value, turn = -turn.value)
+    }
+
+    /**
+     * Field-centric teleop driving, called every loop: pushing [move] forward drives away from the drivers, whichever
+     * way the robot faces, and [turn] turns as in the robot-centric [driveWith]. [heading] is the robot's, from its
+     * localizer; [driversFace] is the way the drivers look, `field.driversFace(alliance)`. Actions stop as in the
+     * robot-centric [driveWith].
+     */
+    fun driveWith(move: Stick, turn: Axis, heading: Heading, driversFace: Heading, takeOverAbove: Double = 0.5) {
+        if (leftToAction(move, turn, takeOverAbove)) return
+        // The drivers' forward, as an angle from the robot's forward
+        val offset = driversFace - heading
+        val c = cos(offset)
+        val s = sin(offset)
+        val away = move.y.value
+        val toTheirRight = move.x.value
+        drive(forward = away * c + toTheirRight * s, right = toTheirRight * c - away * s, turn = -turn.value)
+    }
+
+    /** Whether an action drives and the sticks should leave it alone; stops the action when they shouldn't */
+    private fun leftToAction(move: Stick, turn: Axis, takeOverAbove: Double): Boolean {
+        if (!isBusy) return false
+        if (maxOf(abs(move.x.value), abs(move.y.value), abs(turn.value)) <= takeOverAbove) return true
+        cancelAction()
+        return false
     }
 }

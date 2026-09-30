@@ -5,6 +5,7 @@ import org.beargineers.platform.units.Heading
 import org.beargineers.platform.units.abs
 import org.beargineers.platform.units.degrees
 import org.beargineers.platform.units.inch
+import org.beargineers.platform.units.radians
 
 enum class Alliance { RED, BLUE }
 
@@ -13,7 +14,9 @@ enum class FieldDirection(internal val right: Int, internal val away: Int) {
     AWAY_FROM_AUDIENCE(0, 1),
     TOWARD_AUDIENCE(0, -1),
     AUDIENCE_LEFT(-1, 0),
-    AUDIENCE_RIGHT(1, 0),
+    AUDIENCE_RIGHT(1, 0);
+
+    internal val opposite: FieldDirection get() = entries.first { it.right == -right && it.away == -away }
 }
 
 /** How one alliance's side of the field maps onto the other alliance's side */
@@ -41,7 +44,8 @@ enum class FieldSymmetry {
 
 /**
  * Season-specific description of the field. A season project creates one of these, for example
- * `val DecodeField = Field(xAxis = FieldDirection.TOWARD_AUDIENCE, symmetry = FieldSymmetry.FLIP_Y)`.
+ * `val DecodeField = Field(xAxis = FieldDirection.TOWARD_AUDIENCE, symmetry = FieldSymmetry.FLIP_Y,
+ * redStation = FieldDirection.AUDIENCE_LEFT)`.
  *
  * Field coordinates follow the FTC field coordinate system: the origin is the center of the field, +y points 90°
  * counterclockwise from +x, and heading 0 faces +x. Which physical direction +x points to changes between seasons;
@@ -58,6 +62,10 @@ class Field(
     /** The alliance that poses written in code refer to. [forAlliance] converts them for the other alliance. */
     val referenceAlliance: Alliance = Alliance.RED,
     val tileSize: Distance = 24.inch,
+    /** The wall the red drivers stand at, as seen from the audience; field-centric driving needs it */
+    val redStation: FieldDirection? = null,
+    /** The wall the blue drivers stand at; by default, the one across from red */
+    val blueStation: FieldDirection? = redStation?.opposite,
 ) {
     /** Distance from the field center to each wall */
     val halfSize: Distance get() = tileSize * 3
@@ -96,10 +104,27 @@ class Field(
             }
         }
 
+        val (x, y) = toField(right, away)
+        return Point(tileSize * x, tileSize * y)
+    }
+
+    /**
+     * The way [alliance]'s drivers look: away from their wall. Field-centric driving drives this way when a stick is
+     * pushed forward.
+     */
+    fun driversFace(alliance: Alliance): Heading {
+        val station = (if (alliance == Alliance.RED) redStation else blueStation)
+            ?: error("Field-centric driving needs to know where the drivers stand: set the Field's redStation")
+        val (x, y) = toField(-station.right.toDouble(), -station.away.toDouble())
+        return kotlin.math.atan2(y, x).radians.toHeading()
+    }
+
+    /** Field x and y of a direction given as the audience sees it: [right] and [away] */
+    private fun toField(right: Double, away: Double): Pair<Double, Double> {
         // +x is xAxis; +y is xAxis turned 90° counterclockwise
         val x = right * xAxis.right + away * xAxis.away
         val y = -right * xAxis.away + away * xAxis.right
-        return Point(tileSize * x, tileSize * y)
+        return x to y
     }
 
     /** [pose] as written for the [referenceAlliance], converted for [alliance] */

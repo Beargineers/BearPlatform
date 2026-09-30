@@ -9,6 +9,8 @@ import org.beargineers.platform.component.RobotRunner
 import org.beargineers.platform.config.Config
 import org.beargineers.platform.input.Controls
 import org.beargineers.platform.runtime.everyTick
+import org.beargineers.platform.units.Heading
+import org.beargineers.platform.units.degrees
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -89,6 +91,41 @@ class DrivetrainTest {
         tick()
         robot.drive.driveWith(pad.move, pad.turn)
         assertDrove(forward = 1.0, right = 0.25, turn = -0.5)
+    }
+
+    private fun driveFieldCentric(robotHeading: Int, driversFace: Int) {
+        tick()
+        robot.drive.driveWith(pad.move, pad.turn, robotHeading.heading, driversFace.heading)
+    }
+
+    private val Int.heading: Heading get() = degrees.toHeading()
+
+    @Test
+    fun fieldCentricForwardIsAwayFromTheDrivers() {
+        pad.moveY = 1.0
+        pad.turnX = 0.5
+        driveFieldCentric(robotHeading = 90, driversFace = 90)
+        assertDrove(forward = 1.0, right = 0.0, turn = -0.5)
+
+        // Facing the drivers, away from them is backward
+        driveFieldCentric(robotHeading = -90, driversFace = 90)
+        assertDrove(forward = -1.0, right = 0.0, turn = -0.5)
+
+        // Facing the drivers' left, away from them is to the robot's right
+        driveFieldCentric(robotHeading = 180, driversFace = 90)
+        assertDrove(forward = 0.0, right = 1.0, turn = -0.5)
+    }
+
+    @Test
+    fun fieldCentricSidewaysIsTheDriversRight() {
+        pad.moveX = 1.0
+        // Facing the drivers, their right is the robot's left
+        driveFieldCentric(robotHeading = -90, driversFace = 90)
+        assertDrove(forward = 0.0, right = -1.0, turn = 0.0)
+
+        // Facing the drivers' right, their right is forward
+        driveFieldCentric(robotHeading = 0, driversFace = 90)
+        assertDrove(forward = 1.0, right = 0.0, turn = 0.0)
     }
 
     @Test
