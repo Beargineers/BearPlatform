@@ -214,6 +214,27 @@ class PinpointLocalizerTest {
     }
 
     @Test
+    fun onTheRobotTheReaderThreadReadsThePinpoint() {
+        var now = 0L
+        val reader = DeviceReader { now }
+        host.reader = reader
+        start()
+        // Read once at the start; the loop doesn't read it
+        assertEquals(0, reader.readNextDue())
+        tick()
+        assertPose(Pose.ZERO)
+
+        pinpoint.x = 100.0
+        tick()
+        assertPose(Pose.ZERO, localizer.pose)
+        assertTrue(reader.readNextDue() > 0, "not due yet: localizer.readInterval is 15 ms")
+        now += 15_000_000
+        assertEquals(0, reader.readNextDue())
+        tick()
+        assertPose(Pose(10.cm, 0.cm, 0.degrees))
+    }
+
+    @Test
     fun poseCarriesOverToTheNextOpMode() {
         assertNull(Localizer.lastPose)
         start()

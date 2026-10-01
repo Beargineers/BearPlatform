@@ -7,8 +7,14 @@ import com.qualcomm.robotcore.util.RobotLog
 import kotlinx.coroutines.CoroutineScope
 import org.beargineers.platform.component.RobotRunner
 import org.beargineers.platform.config.Config
+import kotlin.time.Duration.Companion.milliseconds
+import java.util.concurrent.locks.LockSupport
+import org.beargineers.platform.config.config
+import org.beargineers.platform.config.ConfigScope
 import org.beargineers.platform.runtime.LoopRuntime
 import org.beargineers.platform.telemetry.LoopTimer
+import kotlin.time.DurationUnit
+import kotlin.time.Duration
 
 /**
  * Base class for opmodes written with coroutines. Create the robot as a property, `val robot = GammaRobot(this)`, then:
@@ -40,6 +46,8 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
     val battery = BatteryMonitor({ hardwareMap.voltageSensor.toList() }, runner.telemetry)
 
     final override val batteryVoltage: Double? get() = battery.voltage
+
+    final override val deviceReader = DeviceReader()
 
     private val loopTimer = LoopTimer(runner.telemetry)
 
@@ -91,16 +99,20 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
             batteryWarning.forEach { RobotLog.ww(LOG_TAG, "%s", it) }
 
             runner.init { onInit() }
+            // Components added their reads in init()
+            deviceReader.start()
             // Components report their warnings while they initialize, and they are logged then
             val problems = configProblems + runner.robot?.warnings.orEmpty() + batteryWarning
-            while (opModeInInit()) loopOnce(hubs, problems)
+            while (opModeInInit()) pace { loopOnce(hubs, problems) }
 
             if (opModeIsActive()) {
                 runner.start { onStart() }
-                while (opModeIsActive()) loopOnce(hubs, emptyList())
+                while (opModeIsActive()) pace { loopOnce(hubs, emptyList()) }
             }
         } finally {
             LiveTelemetry.running = false
+            deviceReader.stop()
+            memory.stop()
             battery.logLowest()
             try {
                 runner.stop()
@@ -117,19 +129,118 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
     private fun loopOnce(hubs: List<LynxModule>, header: List<String>) {
         val report = runner.telemetry
         loopTimer.loopStarted(runtime.elapsed)
-        for (hub in hubs) hub.clearBulkCache()
         report.startLoop()
+        for (i in hubs.indices) hubs[i].clearBulkCache()
         if (report.isCollecting) {
             header.forEach { report.show(it) }
             loopTimer.report()
+            if (report.isProfiling) {
+                memory.report()
+                deviceReader.report(report::graph)
+            }
         }
-        battery.update()
+        report.timed("battery") { battery.update() }
+        deviceReader.rethrowFailure()
         runner.tick()
-        val lines = report.finishLoop() ?: return
-        for (line in lines) telemetry.addLine(line)
-        telemetry.update()
+        report.timed("telemetry") {
+            val lines = report.finishLoop() ?: return@timed
+            for (line in lines) telemetry.addLine(line)
+            telemetry.update()
+        }
+    }
+
+    private val memory = MemoryProfile()
+
+    private val loopSettings = object : ConfigScope {
+        override val configScope = "loop"
+
+        /**
+         * A loop that takes less than this sleeps for the rest. Looping faster than sensors change only burns the CPU
+         * that the hubs' and the device reader's threads need, and makes garbage.
+         */
+        val minTime by config(5.milliseconds)
+    }
+
+    private var lastLoopEnd = 0L
+
+    /**
+     * Runs one loop, then sleeps if it took less than `loop.minTime`. When profiling, logs where the time went in a
+     * loop that took unusually long, and long pauses between loops.
+     */
+    private inline fun pace(loop: () -> Unit) {
+        val start = System.nanoTime()
+        val report = runner.telemetry
+        if (report.isProfiling && lastLoopEnd != 0L && start - lastLoopEnd > LONG_LOOP) {
+            log("Long pause between loops: ${ms(start - lastLoopEnd)}")
+        }
+        loop()
+        val work = System.nanoTime() - start
+        if (report.isProfiling && work > LONG_LOOP) log("Long loop: ${ms(work)}: ${report.loopBreakdown()}")
+        val rest = loopSettings.minTime.inWholeNanoseconds - work
+        if (rest > 0) {
+            LockSupport.parkNanos(rest)
+            val slept = System.nanoTime() - start - work
+            if (report.isProfiling && slept > rest + LONG_LOOP) log("Long sleep: ${ms(slept)} instead of ${ms(rest)}")
+        }
+        lastLoopEnd = System.nanoTime()
+    }
+
+    private fun ms(nanos: Long) = String.format(java.util.Locale.US, "%.1f ms", nanos / 1e6)
+
+    /**
+     * Garbage collection and allocation, from Android's runtime counters, graphed when profiling: the whole app's, and
+     * the loop thread's, by part (see [RobotTelemetry.allocationCounter][org.beargineers.platform.telemetry.RobotTelemetry.allocationCounter])
+     */
+    private inner class MemoryProfile {
+        private var lastTime = Duration.ZERO
+        private var lastGcMs = -1L
+        private var lastAllocated = -1L
+        private var lastLoopAllocated = -1L
+
+        fun report() {
+            if (runner.telemetry.allocationCounter == null) {
+                // Counting allocations per thread costs a little on every allocation, so only while profiling
+                @Suppress("DEPRECATION")
+                android.os.Debug.startAllocCounting()
+                runner.telemetry.allocationCounter = { threadAllocated() }
+            }
+            val now = runtime.elapsed
+            val gcMs = stat("art.gc.gc-time")
+            val allocated = stat("art.gc.bytes-allocated")
+            val loopAllocated = threadAllocated()
+            val seconds = (now - lastTime).toDouble(DurationUnit.SECONDS)
+            if (lastGcMs >= 0 && gcMs != null && seconds > 0) runner.telemetry.graph("gc ms per s", (gcMs - lastGcMs) / seconds)
+            if (lastAllocated >= 0 && allocated != null && seconds > 0) {
+                runner.telemetry.graph("allocated KB per s", (allocated - lastAllocated) / 1024.0 / seconds)
+            }
+            if (lastLoopAllocated >= 0 && seconds > 0) {
+                var bytes = loopAllocated - lastLoopAllocated
+                if (bytes < 0) bytes += 1L shl 32
+                runner.telemetry.graph("loop thread allocated KB per s", bytes / 1024.0 / seconds)
+            }
+            lastTime = now
+            lastGcMs = gcMs ?: -1
+            lastAllocated = allocated ?: -1
+            lastLoopAllocated = loopAllocated
+        }
+
+        @Suppress("DEPRECATION")
+        private fun threadAllocated(): Long = android.os.Debug.getThreadAllocSize().toLong()
+
+        fun stop() {
+            if (runner.telemetry.allocationCounter != null) {
+                runner.telemetry.allocationCounter = null
+                @Suppress("DEPRECATION")
+                android.os.Debug.stopAllocCounting()
+            }
+        }
+
+        private fun stat(name: String): Long? = android.os.Debug.getRuntimeStat(name)?.toLongOrNull()
     }
 }
+
+/** With profiling on, loops taking longer than this are logged with where their time went */
+private const val LONG_LOOP = 40_000_000L
 
 /** Tag of the platform's lines in logcat and the robot's logs */
 internal const val LOG_TAG = "BearPlatform"

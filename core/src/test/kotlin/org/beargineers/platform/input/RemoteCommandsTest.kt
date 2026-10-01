@@ -48,6 +48,27 @@ class RemoteCommandsTest {
     }
 
     @Test
+    fun startedFromAnotherThreadItRunsOnTheLoopAndNoStartIsLost() {
+        val ranOn = mutableListOf<String>()
+        runner.start { commands.offer("where") { ranOn += Thread.currentThread().name } }
+        tick()
+        val web = Thread {
+            repeat(50) {
+                commands.start("where")
+                Thread.sleep(1)
+            }
+        }.apply { start() }
+        val loop = Thread.currentThread().name
+        val deadline = System.nanoTime() + 5_000_000_000
+        while ((web.isAlive || status("where").finished < 50) && System.nanoTime() < deadline) {
+            tick()
+            Thread.sleep(0, 200_000)
+        }
+        assertEquals(50, status("where").finished, "the last start always runs")
+        assertTrue(ranOn.isNotEmpty() && ranOn.all { it.startsWith(loop) }, "ran on $ranOn")
+    }
+
+    @Test
     fun onlyOfferedCommandsStart() {
         assertNull(commands.start("anything"))
     }

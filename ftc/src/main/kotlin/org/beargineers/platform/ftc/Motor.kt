@@ -10,7 +10,7 @@ import org.beargineers.platform.units.Angle
 import org.beargineers.platform.units.AngularVelocity
 import org.beargineers.platform.units.perSecond
 import org.beargineers.platform.units.rotations
-import kotlin.math.roundToLong
+import kotlin.math.abs
 
 /**
  * A DC motor from the robot configuration, as a part of [parent]: `val fly1 = Motor(this, "fly1")`.
@@ -72,17 +72,36 @@ class Motor(
     private var zeroTicks = 0
 
     /**
-     * Power from -1.0 to 1.0, or with [velocityControl] the fraction of top speed. Values outside are clamped. The
-     * motor is only sent new values, which keeps the loop fast when code sets the same power every loop.
+     * A new [power] is sent to the hub only once it differs from the power last sent by at least this much: each write
+     * takes about 1.6 ms of the hubs' one connection, which all motors and sensors share, and code like a PID changes
+     * the power a little every loop. Small changes add up until they reach it, so the motor follows within this much.
+     * Stopping and full power are always sent exactly.
+     */
+    val powerTolerance by config(0.005)
+
+    /**
+     * Power from -1.0 to 1.0, or with [velocityControl] the fraction of top speed. Values outside are clamped. The hub
+     * is sent it when it differs enough from what it has: see [powerTolerance].
      */
     var power: Double = 0.0
         set(value) {
-            val rounded = (value.coerceIn(-1.0, 1.0) * 1000).roundToLong() / 1000.0
-            if (rounded != field) {
-                field = rounded
-                device.power = rounded
-            }
+            val clamped = value.coerceIn(-1.0, 1.0)
+            field = clamped
+            if (clamped == sentPower) return
+            val exact = clamped == 0.0 || clamped == 1.0 || clamped == -1.0
+            if (!exact && abs(clamped - sentPower) < powerTolerance) return
+            send(clamped)
         }
+
+    /** The power the hub has: [power], give or take [powerTolerance] */
+    var sentPower: Double = 0.0
+        private set
+
+    private fun send(value: Double) {
+        sentPower = value
+        // Each write is a command to the hub, which waits for the hub's answer
+        timed("motor writes", counted = true) { device.power = value }
+    }
 
     /** Encoder ticks since the start or the last [resetPosition] */
     val ticks: Int get() = device.currentPosition - zeroTicks
@@ -124,7 +143,7 @@ class Motor(
         if (appliedVelocityControl != velocityControl) {
             device.mode = if (velocityControl) DcMotor.RunMode.RUN_USING_ENCODER else DcMotor.RunMode.RUN_WITHOUT_ENCODER
             // Power means something else in the new mode: send it again
-            device.power = power
+            send(power)
             appliedVelocityControl = velocityControl
         }
     }

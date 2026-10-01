@@ -34,6 +34,79 @@ class RobotTelemetry(
     val logInterval by config(1.seconds)
 
     /**
+     * Graphs where each loop's time goes, as `time <part> ms`, per loop on average over each [updateInterval]: the
+     * robot's parts' updates, coroutines, hub writes and so on. For finding what makes loops slow; it costs a few clock
+     * readings per loop.
+     */
+    val profile by config(false)
+
+    /** Whether this loop measures where its time goes ([profile], read once per loop) */
+    var isProfiling: Boolean = false
+        private set
+
+    // Time in nanoseconds and how many times, by name, since the last report, and in this loop
+    private val timings = LinkedHashMap<String, Timing>()
+    private val timingList = ArrayList<Timing>()
+    private var profiledLoops = 0
+
+    private class Timing(val name: String, val counted: Boolean) {
+        var nanos = 0L
+        var times = 0
+        var bytes = 0L
+        var loopNanos = 0L
+        var loopTimes = 0
+        var loopBytes = 0L
+    }
+
+    /**
+     * Bytes the calling thread has allocated so far, when the platform can count them; profiling then also graphs
+     * what each part allocates, as `alloc <part> KB`. The FTC opmode sets it.
+     */
+    var allocationCounter: (() -> Long)? = null
+
+    /**
+     * Adds [nanos] and [bytes] allocated to what [name] took in this loop, when profiling. [counted]: also graph how many
+     * times per loop.
+     */
+    fun time(name: String, nanos: Long, counted: Boolean = false, bytes: Long = 0) {
+        if (!isProfiling) return
+        val timing = timings[name] ?: Timing(name, counted).also {
+            timings[name] = it
+            timingList += it
+        }
+        timing.nanos += nanos
+        timing.times++
+        timing.bytes += bytes
+        timing.loopNanos += nanos
+        timing.loopTimes++
+        timing.loopBytes += bytes
+    }
+
+    /** Where this loop's time went so far, when profiling: for logging a loop that took unusually long */
+    fun loopBreakdown(): String = timingList.filter { it.loopTimes > 0 }.joinToString(", ") {
+        String.format(Locale.US, "%s %.1f ms", it.name, it.loopNanos / 1e6) +
+            (if (it.counted) " (${it.loopTimes} times)" else "") +
+            (if (it.loopBytes > 0) String.format(Locale.US, " %.1f KB", it.loopBytes / 1024.0) else "")
+    }
+
+    /** Runs [block], adding how long it took and what it allocated to [name] when profiling. See [time]. */
+    inline fun <T> timed(name: String, counted: Boolean = false, block: () -> T): T {
+        if (!isProfiling) return block()
+        val counter = allocationCounter
+        val startBytes = counter?.invoke() ?: 0L
+        val start = System.nanoTime()
+        try {
+            return block()
+        } finally {
+            val nanos = System.nanoTime() - start
+            var bytes = if (counter != null) counter() - startBytes else 0L
+            // Android counts in an int, which wraps around
+            if (bytes < 0) bytes += 1L shl 32
+            time(name, nanos, counted, bytes)
+        }
+    }
+
+    /**
      * Whether lines shown in this loop are used. `show()` checks it itself; check it before building a line that is
      * expensive to make, or use the `show(label) { ... }` form.
      */
@@ -90,7 +163,7 @@ class RobotTelemetry(
 
     fun log(message: String) = logSink(message)
 
-    /** Starts a loop, deciding whether it collects lines */
+    /** Starts a loop, deciding whether it collects lines and whether it measures where its time goes */
     fun startLoop() {
         val time = clock()
         val last = lastCollected
@@ -99,7 +172,31 @@ class RobotTelemetry(
             lastCollected = time
             labels.clear()
             values.clear()
+            if (profiledLoops > 0) reportTimings()
         }
+        isProfiling = profile
+        if (isProfiling) {
+            profiledLoops++
+            for (i in timingList.indices) {
+                val timing = timingList[i]
+                timing.loopNanos = 0
+                timing.loopTimes = 0
+                timing.loopBytes = 0
+            }
+        }
+    }
+
+    private fun reportTimings() {
+        for ((name, timing) in timings) {
+            if (timing.times == 0) continue
+            graph("time $name ms", timing.nanos / 1e6 / profiledLoops)
+            if (timing.counted) graph("$name per loop", timing.times.toDouble() / profiledLoops)
+            if (allocationCounter != null) graph("alloc $name KB", timing.bytes / 1024.0 / profiledLoops)
+            timing.nanos = 0
+            timing.times = 0
+            timing.bytes = 0
+        }
+        profiledLoops = 0
     }
 
     /**
@@ -148,8 +245,22 @@ class RobotTelemetry(
             lastTime = time
         }
 
-        fun since(seq: Long): List<Sample> =
-            if (samples.isEmpty() || samples.last().seq <= seq) emptyList() else samples.filter { it.seq > seq }
+        /**
+         * The samples after [seq]. Called under the lock the loop's [graph] needs too, so it finds the first new sample by
+         * binary search rather than looking at all of them, and copies only the new ones.
+         */
+        fun since(seq: Long): List<Sample> {
+            if (samples.isEmpty() || samples.last().seq <= seq) return emptyList()
+            var low = 0
+            var high = samples.size
+            while (low < high) {
+                val middle = (low + high) ushr 1
+                if (samples[middle].seq <= seq) low = middle + 1 else high = middle
+            }
+            return ArrayList<Sample>(samples.size - low).also { copy ->
+                for (i in low until samples.size) copy += samples[i]
+            }
+        }
     }
 
     private companion object {

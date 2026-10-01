@@ -1,9 +1,12 @@
 package org.beargineers.platform.input
 
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import org.beargineers.platform.component.RobotHost
 import org.beargineers.platform.config.ConfigScope
 import org.beargineers.platform.config.config
@@ -74,6 +77,10 @@ class Button internal constructor(private val controls: Controls, private val se
     /** How long the button has been down; zero when it is up */
     val heldFor: Duration get() = if (isDown) controls.runtime.elapsed - pressedAt else Duration.ZERO
 
+    // Coroutines waiting for the next press or release. Woken by read(), so waiting costs nothing in loops without one.
+    private val pressWaiters = ArrayList<CancellableContinuation<Unit>>()
+    private val releaseWaiters = ArrayList<CancellableContinuation<Unit>>()
+
     internal fun read() {
         val down = sensor()
         wasPressed = down && !isDown
@@ -84,18 +91,28 @@ class Button internal constructor(private val controls: Controls, private val se
         }
         if (wasReleased) releases++
         isDown = down
+        if (wasPressed) wake(pressWaiters)
+        if (wasReleased) wake(releaseWaiters)
     }
 
     /** Waits for the next press. A press in the current loop, before this was called, doesn't count. */
-    suspend fun awaitPress() {
-        val seen = presses
-        waitUntil { presses > seen }
-    }
+    suspend fun awaitPress() = await(pressWaiters)
 
     /** Waits for the next release. A release in the current loop, before this was called, doesn't count. */
-    suspend fun awaitRelease() {
-        val seen = releases
-        waitUntil { releases > seen }
+    suspend fun awaitRelease() = await(releaseWaiters)
+
+    private suspend fun await(waiters: ArrayList<CancellableContinuation<Unit>>) =
+        suspendCancellableCoroutine { waiter ->
+            waiters += waiter
+            waiter.invokeOnCancellation { waiters -= waiter }
+        }
+
+    private fun wake(waiters: ArrayList<CancellableContinuation<Unit>>) {
+        if (waiters.isEmpty()) return
+        val woken = waiters.toList()
+        waiters.clear()
+        // They run in this loop, after the inputs are read, like everything else
+        for (waiter in woken) waiter.resume(Unit)
     }
 
     /** Starts [action] on every press. Pressing again while [action] still runs starts it over. */
@@ -135,7 +152,7 @@ class Button internal constructor(private val controls: Controls, private val se
             while (true) {
                 awaitPress()
                 if (after > Duration.ZERO && waitUntil(after) { !isDown }) continue
-                race({ action() }, { waitUntil { !isDown } })
+                race({ action() }, { awaitRelease() })
             }
         }
 

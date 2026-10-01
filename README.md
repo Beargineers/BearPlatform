@@ -152,7 +152,8 @@ class Driving : CoroutineOpMode() {
 ```
 
 Every loop, `CoroutineOpMode` reads the gamepads and all hub sensors (in one bulk read), updates the robot's
-components, runs coroutines and sends telemetry. Handlers set up in `onInit` stop at START. The Driver Station's
+components, runs coroutines and sends telemetry. A loop that takes less than `loop.minTime` (5 ms) sleeps for the rest:
+faster than the sensors change only burns CPU and makes garbage. Handlers set up in `onInit` stop at START. The Driver Station's
 first lines show loop time (*Loop: 2.4 ms average, 6.1 ms longest*) and the battery. Every loop's time is graphed as
 `loop ms`: a loop longer than 10 ms always shows up there.
 
@@ -228,7 +229,8 @@ everyTick {
 }
 ```
 
-`PinpointLocalizer` reads goBILDA's Pinpoint every loop. Its settings, with goBILDA's signs:
+`PinpointLocalizer` reads goBILDA's Pinpoint on the device reader's thread (below) every `localizer.readInterval`
+(15 ms), so the loop never waits for it. Its settings, with goBILDA's signs:
 `localizer.forwardPodLeft` and `localizer.strafePodForward` (required: where the pods are), `localizer.pods` (FOUR_BAR
 or SWINGARM), the pod directions and `localizer.yawScalar`. They can be tuned live on the settings page. INIT
 calibrates the Pinpoint's gyro with the robot standing still; the Driver Station shows the Pinpoint's problems, like a
@@ -258,7 +260,8 @@ suspend fun GammaRobot.collect() {
 `PathFollower` drives to a pose with three PIDs on how far the robot still has to go: forward, sideways (per cm) and
 around (per degree). Their D terms use the velocity the localizer measures, so late readings don't make them jump.
 Points on the way count as passed within `follower.passTolerance` (8 cm, 5°); where it stops, the robot has arrived
-within `follower.tolerance` (2 cm, 1°) once it's slower than `follower.stoppedSpeed`. A robot that gets no closer for
+within `follower.tolerance` (2 cm, 1°) once it's slower than `follower.stoppedSpeed` and turning slower than
+`follower.stoppedTurnSpeed`. A robot that gets no closer for
 `follower.stallTime`, like one pushing against a wall, gives up on the point: `driveTo` returns false. Driving takes
 over the drivetrain: a new drive action or the sticks stop it, and the motors stop with it. For the other alliance,
 convert the poses with `field.forAlliance`.
@@ -271,6 +274,23 @@ The default gains were tuned on a 12 kg mecanum robot with `drive.nominalVoltage
 in 0.7 s, within 1 cm and 1°. To tune another robot, offer drives as commands (below) and change
 `follower.forwardGains`, `strafeGains` and `headingGains` live while watching the `forward error cm`, `strafe error cm`
 and `heading error deg` graphs, next to the powers they turn into; the log says how each drive ended.
+
+#### Hub time and the device reader
+
+Every command to the hubs, a motor power, a servo position, a bulk read or a step of an I2C read, holds the hubs' one
+connection until the hub answers, about 1.4 ms, and there is one connection for the Control Hub and an Expansion Hub
+together. That, not the code, is what makes loops slow: a motor write costs about 1.6 ms, a Pinpoint read about 5.5 ms.
+
+- Motors are only sent a power that differs from what the hub has by at least `<motor>.powerTolerance` (0.005), so a
+  PID nudging the power every loop doesn't write every loop. Stopping and full power are always sent exactly.
+- I2C sensors are read on the `DeviceReader`'s thread, one at a time, each at its own interval, so the loop doesn't
+  wait for them. A component adds its read in `init()`: `(robot.host as FtcHost).deviceReader?.add("color",
+  { readInterval }) { latest = sensor.read() }`, keeping the result in a `@Volatile` field for `update()`. Every read
+  takes connection time from everything else, so read as rarely as the robot can do with.
+- `telemetry.profile = yes` graphs where each loop's time goes (`time <part> ms`: each top-level part's update,
+  coroutines, motor writes and how many per loop, battery, telemetry), what each part allocates (`alloc <part> KB`),
+  garbage collection, and how busy the device reader keeps the connection (`reader busy %`, and each read's time and
+  rate).
 
 #### Config on the robot
 

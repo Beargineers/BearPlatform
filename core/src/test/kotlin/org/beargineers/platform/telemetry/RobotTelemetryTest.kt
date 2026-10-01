@@ -28,6 +28,17 @@ private class TestRobot(host: RobotHost) : Robot(host) {
     val turret = Turret(this)
 }
 
+private class Writer(parent: Component) : Component(parent) {
+    override fun update() {
+        repeat(2) { timed("writes", counted = true) {} }
+    }
+}
+
+private class ProfiledRobot(host: RobotHost) : Robot(host) {
+    val turret = Turret(this)
+    val writer = Writer(this)
+}
+
 class RobotTelemetryTest {
     private val time = TestTimeSource()
     private val start = time.markNow()
@@ -172,6 +183,37 @@ class RobotTelemetryTest {
         telemetry.graph("error", Double.NaN)
         assertTrue(telemetry.samplesSince(0).series.isEmpty())
         assertNull(telemetry.samplesSince(0).lastTime)
+    }
+
+    @Test
+    fun profileGraphsWhereLoopsGo() {
+        val time = TestTimeSource()
+        val runner = RobotRunner(time)
+        ProfiledRobot(runner)
+        runner.init()
+        fun loops() = repeat(30) {
+            runner.telemetry.startLoop()
+            runner.tick()
+            runner.telemetry.finishLoop()
+            time += 10.milliseconds
+        }
+        loops()
+        assertTrue(runner.telemetry.samplesSince(0).series.keys.none { it.startsWith("time") }, "off by default")
+
+        Config.load("telemetry.profile = yes")
+        loops()
+        val series = runner.telemetry.samplesSince(0).series
+        for (name in listOf("time inputs ms", "time update turret ms", "time update writer ms", "time coroutines ms", "time writes ms")) {
+            assertTrue(name in series, "$name in ${series.keys}")
+        }
+        assertEquals(2.0, series.getValue("writes per loop").last().value)
+
+        // A counter that goes up by 100 bytes every time it is read: each timed part allocates 100 bytes
+        var bytes = 0L
+        runner.telemetry.allocationCounter = { bytes += 100; bytes }
+        loops()
+        val withAllocations = runner.telemetry.samplesSince(0).series
+        assertEquals(200 / 1024.0, withAllocations.getValue("alloc writes KB").last().value, 1e-9)
     }
 
     @Test

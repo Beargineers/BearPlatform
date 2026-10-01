@@ -90,7 +90,7 @@ class MecanumDriveTest {
 
         Config.load("drive.nominalVoltage = 12")
         robot.drive.drive(forward = 0.5)
-        assertEquals(0.462, leftFront.power)
+        assertEquals(0.5 * 12 / 13, leftFront.power, 1e-9)
         host.voltage = 10.0
         robot.drive.drive(forward = 0.5)
         assertEquals(0.6, leftFront.power)

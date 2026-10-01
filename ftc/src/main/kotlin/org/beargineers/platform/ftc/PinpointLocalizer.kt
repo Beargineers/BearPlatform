@@ -18,6 +18,7 @@ import org.beargineers.platform.units.radians
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit
 import org.firstinspires.ftc.robotcore.external.navigation.UnnormalizedAngleUnit
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Localization by goBILDA's Pinpoint odometry computer, with two odometry pods: one measuring forward motion and one
@@ -58,9 +59,30 @@ class PinpointLocalizer(parent: Component, name: String = "localizer", device: S
 
     enum class Pods { FOUR_BAR, SWINGARM }
 
+    /**
+     * How often the Pinpoint is read, on the robot's device reader thread. Each read takes about 5.5 ms of the hubs'
+     * connection, which motors and other sensors share: reading more often slows them, reading less often makes the
+     * pose older when the robot sees it. The Pinpoint keeps track much faster either way. On a mecanum robot, path
+     * following was as fast and as accurate at 10, 15 and 20 ms, with the connection 55, 37 and 28% busy reading.
+     */
+    val readInterval by config(15.milliseconds)
+
     /** What the Pinpoint reported last; the pose only moves while it is READY */
     var status: DeviceStatus = DeviceStatus.NOT_READY
         private set
+
+    /** One reading of the Pinpoint as it counts: mm and radians, from where it calibrated */
+    private class Reading(
+        val status: DeviceStatus,
+        val x: Double, val y: Double, val heading: Double,
+        val velocityX: Double, val velocityY: Double, val turning: Double,
+    )
+
+    // The newest reading, from the reader thread, and the one the pose was last worked out from
+    @Volatile
+    private var latest: Reading? = null
+    private var used: Reading? = null
+    private var readInLoop = true
 
     private var current = Pose.ZERO
     private var currentVelocity = PoseVelocity.ZERO
@@ -100,25 +122,22 @@ class PinpointLocalizer(parent: Component, name: String = "localizer", device: S
         }
         pinpoint.resetPosAndIMU()
         pose = lastPose ?: Pose.ZERO
+
+        // On the robot, the Pinpoint is read on the device reader's thread, so the loop doesn't wait for it
+        (robot.host as? FtcHost)?.deviceReader?.let { reader ->
+            reader.add("pinpoint", { readInterval }) { latest = readDevice() }
+            readInLoop = false
+        }
     }
 
     override fun update() {
-        applySettings()
-        pinpoint.update()
-
-        val previous = status
-        status = pinpoint.deviceStatus
-        when (status) {
-            // A bad read keeps the previous reading, which is still good to use
-            DeviceStatus.READY, DeviceStatus.FAULT_BAD_READ -> {
-                if (status == DeviceStatus.FAULT_BAD_READ) badReads++
-                read()
-            }
-            else -> show("Pinpoint", status)
+        if (readInLoop) latest = readDevice()
+        val reading = latest
+        if (reading != null && reading !== used) {
+            used = reading
+            use(reading)
         }
-        if (status != previous && status != DeviceStatus.READY && status != DeviceStatus.FAULT_BAD_READ) {
-            log("Pinpoint reports $status")
-        }
+        if (status != DeviceStatus.READY && status != DeviceStatus.FAULT_BAD_READ) show("Pinpoint", status)
 
         show("Pose") { current }
         graph("x cm", current.x.inCm)
@@ -133,12 +152,33 @@ class PinpointLocalizer(parent: Component, name: String = "localizer", device: S
         if (badReads > 0) log("$badReads bad reads from the Pinpoint")
     }
 
-    private fun read() {
-        val raw = Pose(
-            pinpoint.getPosX(DistanceUnit.MM).mm,
-            pinpoint.getPosY(DistanceUnit.MM).mm,
-            pinpoint.getHeading(AngleUnit.RADIANS).radians,
+    /** Sends changed settings and reads the Pinpoint: on the device reader's thread, or in the loop where there is none */
+    private fun readDevice(): Reading {
+        applySettings()
+        pinpoint.update()
+        return Reading(
+            pinpoint.deviceStatus,
+            pinpoint.getPosX(DistanceUnit.MM),
+            pinpoint.getPosY(DistanceUnit.MM),
+            pinpoint.getHeading(AngleUnit.RADIANS),
+            pinpoint.getVelX(DistanceUnit.MM),
+            pinpoint.getVelY(DistanceUnit.MM),
+            pinpoint.getHeadingVelocity(UnnormalizedAngleUnit.RADIANS),
         )
+    }
+
+    /** Works out the field pose from a new [reading], on the loop's thread */
+    private fun use(reading: Reading) {
+        val previous = status
+        status = reading.status
+        if (status != previous && status != DeviceStatus.READY && status != DeviceStatus.FAULT_BAD_READ) {
+            log("Pinpoint reports $status")
+        }
+        // A bad read keeps the previous reading, which is still good to use
+        if (status == DeviceStatus.FAULT_BAD_READ) badReads++
+        if (status != DeviceStatus.READY && status != DeviceStatus.FAULT_BAD_READ) return
+
+        val raw = Pose(reading.x.mm, reading.y.mm, reading.heading.radians)
         requested?.let { wanted ->
             val turn = wanted.heading - raw.heading
             fieldFromPinpoint = Pose(wanted.point - raw.point.rotateBy(turn), turn)
@@ -148,17 +188,13 @@ class PinpointLocalizer(parent: Component, name: String = "localizer", device: S
         val turn = fieldFromPinpoint.heading.toAngle()
         current = Pose(fieldFromPinpoint.point + raw.point.rotateBy(turn), raw.heading + turn)
 
-        val moving = Point(pinpoint.getVelX(DistanceUnit.MM).mm, pinpoint.getVelY(DistanceUnit.MM).mm).rotateBy(turn)
-        currentVelocity = PoseVelocity(
-            moving.x.perSecond,
-            moving.y.perSecond,
-            pinpoint.getHeadingVelocity(UnnormalizedAngleUnit.RADIANS).radians.perSecond,
-        )
+        val moving = Point(reading.velocityX.mm, reading.velocityY.mm).rotateBy(turn)
+        currentVelocity = PoseVelocity(moving.x.perSecond, moving.y.perSecond, reading.turning.radians.perSecond)
     }
 
     /**
-     * Sends settings to the Pinpoint when they change, so they can be tuned on the settings page. Runs every loop,
-     * so it compares plain values and creates nothing.
+     * Sends settings to the Pinpoint when they change, so they can be tuned on the settings page. Runs before every
+     * read, so it compares plain values and creates nothing.
      */
     private fun applySettings() {
         val forwardPodLeftMm = forwardPodLeft.inMm

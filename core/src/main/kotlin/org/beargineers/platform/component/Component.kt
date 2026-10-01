@@ -92,6 +92,13 @@ abstract class Component : ConfigScope {
     /** Records [value] under [name] for the live graphs on the robot's web page */
     fun graph(name: String, value: Double) = telemetry.graph(name, value)
 
+    /**
+     * Runs [block], adding how long it took to `time <name> ms` on the graphs when `telemetry.profile` is on. [counted]
+     * also graphs how many times per loop. Motors measure their writes to the hub this way.
+     */
+    inline fun <T> timed(name: String, counted: Boolean = false, block: () -> T): T =
+        robot.host.runner.telemetry.timed(name, counted, block)
+
     /** Writes [message] to the robot's log, after this component's path */
     fun log(message: String) = telemetry.log("${path.ifEmpty { name }}: $message")
 
@@ -138,6 +145,9 @@ abstract class Component : ConfigScope {
     }
 
     internal fun runUpdate() = update()
+
+    // Profiling adds up updates by the robot's top-level parts: the drive's motors count as the drive
+    internal val profileName: String by lazy { "update " + (path.substringBefore('.').ifEmpty { name }) }
 
     internal fun runStopIfInitialized() {
         if (initialized) stop()

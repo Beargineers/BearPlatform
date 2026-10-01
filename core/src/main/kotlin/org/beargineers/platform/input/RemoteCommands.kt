@@ -1,12 +1,15 @@
 package org.beargineers.platform.input
 
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
-import org.beargineers.platform.runtime.waitUntil
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.resume
 
 /**
  * Actions started from outside the robot's program: by buttons on the robot's graphs page, or by a script over the
@@ -34,7 +37,13 @@ class RemoteCommands internal constructor() {
      * Asks for the command called [name] to start. Returns the number of this run, to tell when it has finished, or
      * null when no such command is offered now. Any thread.
      */
-    fun start(name: String): Int? = commands.firstOrNull { it.name == name }?.started?.incrementAndGet()
+    fun start(name: String): Int? {
+        val command = commands.firstOrNull { it.name == name } ?: return null
+        val run = command.started.incrementAndGet()
+        // Resuming from this thread is safe: the coroutine continues on the loop's thread, in its next loop
+        command.waiter.getAndSet(null)?.resume(Unit)
+        return run
+    }
 
     /** Offers [action] as the command [name], until the calling coroutine ends. Returns the job that handles it. */
     suspend fun offer(name: String, action: suspend CoroutineScope.() -> Unit): Job {
@@ -46,7 +55,7 @@ class RemoteCommands internal constructor() {
                 var handled = 0
                 var running: Job? = null
                 while (true) {
-                    waitUntil { command.started.get() > handled }
+                    if (command.started.get() <= handled) command.awaitStart(handled)
                     handled = command.started.get()
                     val run = handled
                     running?.cancel()
@@ -69,5 +78,15 @@ class RemoteCommands internal constructor() {
 
         @Volatile
         var finished = 0
+
+        /** The handler waiting for a start; woken by [start], so waiting costs nothing in loops without one */
+        val waiter = AtomicReference<CancellableContinuation<Unit>?>()
+
+        suspend fun awaitStart(handled: Int) = suspendCancellableCoroutine { continuation ->
+            waiter.set(continuation)
+            continuation.invokeOnCancellation { waiter.compareAndSet(continuation, null) }
+            // A start that came in just before this waiter was set found no one to wake
+            if (started.get() > handled) waiter.getAndSet(null)?.resume(Unit)
+        }
     }
 }

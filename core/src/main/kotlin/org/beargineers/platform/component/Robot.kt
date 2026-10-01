@@ -95,13 +95,16 @@ class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -
      */
     fun tick() {
         // Indexed loops: iterators would be garbage, every loop
-        for (i in inputs.indices) inputs[i]()
+        telemetry.timed("inputs") { for (i in inputs.indices) inputs[i]() }
         robot?.let { robot ->
             val components = robot.components()
             for (i in components.indices) components[i].initIfNew()
-            for (i in components.indices) components[i].runUpdate()
+            for (i in components.indices) {
+                val component = components[i]
+                telemetry.timed(component.profileName) { component.runUpdate() }
+            }
         }
-        runtime.tick()
+        telemetry.timed("coroutines") { runtime.tick() }
     }
 
     /** Cancels the init coroutine and launches [onStart] */

@@ -127,17 +127,37 @@ class HardwareTest {
     }
 
     @Test
-    fun powerIsClampedAndOnlySentWhenItChanges() {
+    fun onlyPowerChangesAboveTheToleranceAreSent() {
         val motor = startRobot().shooter.flywheel
         val writesAfterInit = flywheel.powerWrites
 
         repeat(3) { motor.power = 0.5 }
         assertEquals(writesAfterInit + 1, flywheel.powerWrites)
 
+        // Within powerTolerance (0.005) of what the hub has: not sent, but small changes add up
+        motor.power = 0.503
+        assertEquals(0.503, motor.power)
+        assertEquals(0.5, flywheel.power)
+        assertEquals(0.5, motor.sentPower)
+        motor.power = 0.506
+        assertEquals(0.506, flywheel.power)
+        assertEquals(writesAfterInit + 2, flywheel.powerWrites)
+
         motor.power = 1.7
+        assertEquals(1.0, motor.power)
         assertEquals(1.0, flywheel.power)
-        motor.power = 0.12345
-        assertEquals(0.123, flywheel.power)
+        motor.power = 0.997
+        assertEquals(1.0, flywheel.power)
+
+        // Stopping is always sent, even when the hub has nearly zero
+        motor.power = 0.003
+        assertEquals(0.003, flywheel.power)
+        motor.power = 0.0
+        assertEquals(0.0, flywheel.power)
+
+        Config.load("shooter.flywheel.powerTolerance = 0")
+        motor.power = 0.001
+        assertEquals(0.001, flywheel.power)
     }
 
     @Test

@@ -91,8 +91,11 @@ class PathFollower(
     val passTolerance by config(8.cm)
     val passHeadingTolerance by config(5.degrees)
 
-    /** Where it stops, the robot has arrived only once it is slower than this */
+    /** Where it stops, the robot has arrived only once it moves slower than this */
     val stoppedSpeed by config(10.cm.perSecond)
+
+    /** And turns slower than this: a robot still turning fast would carry on past the heading */
+    val stoppedTurnSpeed by config(20.degrees.perSecond)
 
     /**
      * When the robot gets no closer for this long, by 0.5 cm or 0.5°, the follower gives up on the point it drives to,
@@ -147,7 +150,8 @@ class PathFollower(
             val tolerance = waypoint.tolerance ?: if (stopping) tolerance else passTolerance
             val headingTolerance = waypoint.headingTolerance ?: if (stopping) headingTolerance else passHeadingTolerance
             val closeEnough = error.length <= tolerance && abs(error.turn) <= headingTolerance
-            val arrived = closeEnough && (!stopping || velocity.speed < stoppedSpeed)
+            val arrived = closeEnough &&
+                (!stopping || (velocity.speed < stoppedSpeed && abs(velocity.turn) < stoppedTurnSpeed))
 
             progress.update(error, now)
             val stalled = !arrived && now - progress.madeAt > stallTime
