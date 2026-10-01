@@ -32,6 +32,8 @@ class TestFtcHost(hardwareAvailable: Boolean = true) : FtcHost {
     val hardware = FakeHardwareMap()
     val time = TestTimeSource()
     override val runner = RobotRunner(time)
+    var voltage: Double? = null
+    override val batteryVoltage: Double? get() = voltage
     override val opMode: OpMode = object : OpMode() {
         override fun init() {}
         override fun loop() {}

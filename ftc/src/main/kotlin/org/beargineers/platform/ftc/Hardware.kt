@@ -10,6 +10,9 @@ import kotlin.reflect.KProperty
 /** A [RobotHost] on the Control Hub: gives components the opmode's hardware, gamepads and telemetry */
 interface FtcHost : RobotHost {
     val opMode: OpMode
+
+    /** The battery's voltage, read a few times a second; null when there is no reading */
+    val batteryVoltage: Double? get() = null
 }
 
 /** The devices from the robot configuration. Available from [init][Component] on, not in constructors. */

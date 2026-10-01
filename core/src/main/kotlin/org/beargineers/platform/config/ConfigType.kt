@@ -6,15 +6,19 @@ import org.beargineers.platform.geometry.Field
 import org.beargineers.platform.geometry.Point
 import org.beargineers.platform.geometry.Pose
 import org.beargineers.platform.units.Angle
+import org.beargineers.platform.units.AngularVelocity
 import org.beargineers.platform.units.Distance
 import org.beargineers.platform.units.Heading
+import org.beargineers.platform.units.LinearVelocity
 import org.beargineers.platform.units.cm
 import org.beargineers.platform.units.degrees
 import org.beargineers.platform.units.inch
 import org.beargineers.platform.units.meters
 import org.beargineers.platform.units.mm
+import org.beargineers.platform.units.perSecond
 import org.beargineers.platform.units.radians
 import org.beargineers.platform.units.rotations
+import org.beargineers.platform.units.rpm
 import org.beargineers.platform.units.tiles
 import kotlin.reflect.KClass
 import kotlin.time.Duration
@@ -38,6 +42,8 @@ internal fun standardConfigTypes(): Map<KClass<*>, ConfigType<*>> = mapOf(
     Angle::class to ConfigType("angle", ::parseAngle, ::formatAngle),
     Heading::class to ConfigType("heading", { parseAngle(it).toHeading() }, { formatAngle(it.toAngle()) }),
     Duration::class to ConfigType("duration", ::parseDuration),
+    LinearVelocity::class to ConfigType("speed", ::parseSpeed) { formatNumber(it.inCmPerSecond) + "cm/s" },
+    AngularVelocity::class to ConfigType("turning speed", ::parseTurnSpeed) { formatNumber(it.inDegreesPerSecond) + "deg/s" },
     Point::class to ConfigType("point", ::parsePoint) { "${formatDistance(it.x)}, ${formatDistance(it.y)}" },
     Pose::class to ConfigType("pose", ::parsePose) {
         "${formatDistance(it.x)}, ${formatDistance(it.y)}, ${formatAngle(it.heading.toAngle())}"
@@ -131,6 +137,32 @@ private fun parseAngle(text: String): Angle {
         "", "deg", "degree", "degrees", "°" -> number.degrees
         "rad", "radian", "radians" -> number.radians
         "rot", "rotation", "rotations" -> number.rotations
+        else -> fail("expected $expected; unknown unit '$unit'")
+    }
+}
+
+private fun parseSpeed(text: String): LinearVelocity {
+    val expected = "a speed like 30cm/s or 12in/s (plain numbers are cm/s)"
+    val (number, unit) = numberAndUnit(text, expected)
+    val distance = when (unit.replace(" ", "")) {
+        "", "cm/s" -> number.cm
+        "mm/s" -> number.mm
+        "m/s" -> number.meters
+        "in/s", "inch/s", "inches/s", "\"/s" -> number.inch
+        "ft/s" -> (number * 12).inch
+        "tile/s", "tiles/s" -> number.tiles
+        else -> fail("expected $expected; unknown unit '$unit'")
+    }
+    return distance.perSecond
+}
+
+private fun parseTurnSpeed(text: String): AngularVelocity {
+    val expected = "a turning speed like 90deg/s or 60rpm (plain numbers are degrees per second)"
+    val (number, unit) = numberAndUnit(text, expected)
+    return when (unit.replace(" ", "")) {
+        "", "deg/s", "°/s" -> number.degrees.perSecond
+        "rad/s" -> number.radians.perSecond
+        "rpm" -> number.rpm
         else -> fail("expected $expected; unknown unit '$unit'")
     }
 }

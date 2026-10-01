@@ -56,7 +56,16 @@ class Pid(
         private set
 
     /** The output for [error], which is `target - measured` */
-    fun update(error: Double): Double {
+    fun update(error: Double): Double = update(error, rate = null)
+
+    /**
+     * The output for [error], with how fast it changes, per second, measured by a sensor rather than taken from the
+     * last errors: like a velocity the sensor measures. Sensor noise and a moving target then don't make the
+     * derivative jump.
+     */
+    fun update(error: Double, rate: Double): Double = update(error, rate as Double?)
+
+    private fun update(error: Double, rate: Double?): Double {
         val gains = gains()
         if (gains != lastGains) {
             reset()
@@ -68,12 +77,12 @@ class Pid(
         lastUpdate = now
 
         if (step == null || step > maxStep || step <= Duration.ZERO) {
-            // First update, or after a pause: nothing to take the derivative or integral over yet
-            derivative = 0.0
+            // First update, or after a pause: nothing to take the derivative or integral over yet, unless measured
+            derivative = rate ?: 0.0
             integral = 0.0
         } else {
             val dt = step.toDouble(DurationUnit.SECONDS)
-            val rawDerivative = (error - lastError) / dt
+            val rawDerivative = rate ?: ((error - lastError) / dt)
             val tau = derivativeSmoothing.toDouble(DurationUnit.SECONDS)
             derivative += (rawDerivative - derivative) * (dt / (tau + dt))
 

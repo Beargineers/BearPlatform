@@ -39,6 +39,8 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
     /** The battery, read through the hubs a few times a second */
     val battery = BatteryMonitor({ hardwareMap.voltageSensor.toList() }, runner.telemetry)
 
+    final override val batteryVoltage: Double? get() = battery.voltage
+
     private val loopTimer = LoopTimer(runner.telemetry)
 
     /**
@@ -59,6 +61,13 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
     /** Writes [message] to the robot's log */
     fun log(message: String) = runner.telemetry.log(message)
 
+    /**
+     * Offers [action] as a command, started by a button on the robot's graphs page or by a script, for testing and
+     * tuning: `command("forward 60 cm") { robot.follower.driveTo(FORWARD) }`. Offered until the calling coroutine ends:
+     * from `onInit` until START, from `onStart` until the end. See [RemoteCommands][org.beargineers.platform.input.RemoteCommands].
+     */
+    suspend fun command(name: String, action: suspend CoroutineScope.() -> Unit) = runner.commands.offer(name, action)
+
     open suspend fun CoroutineScope.onInit() {}
 
     abstract suspend fun CoroutineScope.onStart()
@@ -68,7 +77,7 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
     final override fun runOpMode() {
         val hubs = hardwareMap.getAll(LynxModule::class.java)
         for (hub in hubs) hub.bulkCachingMode = LynxModule.BulkCachingMode.MANUAL
-        LiveTelemetry.publish(runner.telemetry)
+        LiveTelemetry.publish(runner.telemetry, runner.commands)
         LiveTelemetry.running = true
 
         try {

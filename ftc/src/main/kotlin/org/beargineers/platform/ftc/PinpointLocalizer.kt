@@ -124,6 +124,8 @@ class PinpointLocalizer(parent: Component, name: String = "localizer", device: S
         graph("x cm", current.x.inCm)
         graph("y cm", current.y.inCm)
         graph("heading deg", current.heading.inDegrees)
+        graph("speed cm/s", currentVelocity.speed.inCmPerSecond)
+        graph("turn deg/s", currentVelocity.turn.inDegreesPerSecond)
     }
 
     override fun stop() {

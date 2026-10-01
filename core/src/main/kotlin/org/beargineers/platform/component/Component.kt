@@ -120,6 +120,7 @@ abstract class Component : ConfigScope {
                 "Give them different names, like $kind(this, \"left\") and $kind(this, \"right\")"
         }
         parts += part
+        robot.partAdded()
     }
 
     internal fun inOrder(): List<Component> = buildList { collectInOrder(this) }

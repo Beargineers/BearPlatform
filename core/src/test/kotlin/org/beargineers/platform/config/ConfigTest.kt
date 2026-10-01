@@ -136,6 +136,16 @@ class ConfigTest {
     }
 
     @Test
+    fun anotherOpModesRobotMayHaveOtherDefaults() {
+        Arm("elbow", 0.5)
+        Config.newRound()
+        val next = Arm("elbow", 0.7)
+        Config.load("")
+        assertEquals(0.7, next.power)
+        assertEquals("0.7", Config.declarations().single { it.key == "elbow.power" }.defaultText)
+    }
+
+    @Test
     fun sameKeyWithDifferentTypeFails() {
         Arm("wrist", 0.5)
         val thrown = assertFailsWith<IllegalStateException> { ArmWithAngle("wrist") }

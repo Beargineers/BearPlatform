@@ -36,20 +36,26 @@ class RobotConfig(
 
     /**
      * Applies [newText] right away and keeps it on the robot until the next install.
-     * Throws [ConfigException], changing nothing, if a value can't be read.
+     * Throws [ConfigException], changing nothing, if a value can't be read, and whatever went wrong, also changing
+     * nothing, if it couldn't be stored.
      */
     @Synchronized
-    fun edit(newText: String) {
-        Config.load(newText)
-        files.save(newText)
-        loaded = true
-    }
+    fun edit(newText: String) = applyAndStore(newText) { files.save(newText) }
 
     /** Goes back to the config bundled with the app. Throws [ConfigException], changing nothing, if it can't be read. */
     @Synchronized
-    fun discardEdits() {
-        Config.load(files.bundled())
-        files.discardEdits()
+    fun discardEdits() = applyAndStore(files.bundled()) { files.discardEdits() }
+
+    // Loading checks the values; storing comes after it, and a failure there takes the loaded values back
+    private fun applyAndStore(newText: String, store: () -> Unit) {
+        val previous = Config.text
+        Config.load(newText)
+        try {
+            store()
+        } catch (e: Exception) {
+            runCatching { Config.load(previous) }
+            throw e
+        }
         loaded = true
     }
 
@@ -59,12 +65,13 @@ class RobotConfig(
 
         /**
          * The config of the app on this Control Hub. The bundled config is `res/raw/config.properties` of the app;
-         * edits are kept in `FIRST/settings/BearPlatform` on the Control Hub.
+         * edits are kept in `FIRST/settings/BearPlatformConfig` on the Control Hub. (Not `BearPlatform`: the DECODE
+         * code keeps a file of its own settings there.)
          */
         fun onRobot(context: Context): RobotConfig = onRobot ?: synchronized(this) {
             onRobot ?: run {
                 val installedAt = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
-                val files = ConfigFiles(File(AppUtil.ROBOT_SETTINGS, "BearPlatform"), installedAt.toString()) {
+                val files = ConfigFiles(File(AppUtil.ROBOT_SETTINGS, "BearPlatformConfig"), installedAt.toString()) {
                     bundled(context)
                 }
                 RobotConfig(files, installedAt)

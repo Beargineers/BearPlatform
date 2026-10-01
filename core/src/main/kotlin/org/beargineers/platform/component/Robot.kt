@@ -2,6 +2,8 @@ package org.beargineers.platform.component
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import org.beargineers.platform.config.Config
+import org.beargineers.platform.input.RemoteCommands
 import org.beargineers.platform.runtime.LoopRuntime
 import org.beargineers.platform.telemetry.RobotTelemetry
 import kotlin.time.TimeSource
@@ -15,6 +17,9 @@ import kotlin.time.TimeSource
 abstract class Robot(val host: RobotHost) : Component() {
     private val reported = mutableListOf<String>()
 
+    // All components in update order; built again only after a part is added, not every loop
+    private var order: List<Component>? = null
+
     /** Problems components reported with [warn], like doubtful hardware settings. The opmode shows them at INIT. */
     val warnings: List<String> get() = reported.toList()
 
@@ -24,6 +29,12 @@ abstract class Robot(val host: RobotHost) : Component() {
 
     internal fun addWarning(warning: String) {
         reported += warning
+    }
+
+    internal fun components(): List<Component> = order ?: inOrder().also { order = it }
+
+    internal fun partAdded() {
+        order = null
     }
 }
 
@@ -41,10 +52,18 @@ interface RobotHost {
  * The FTC opmode drives it on the robot; tests drive it directly.
  */
 class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -> Unit = {}) : RobotHost {
+    init {
+        // Each opmode builds its own robot, which may give settings other defaults than the last opmode's robot
+        Config.newRound()
+    }
+
     val runtime = LoopRuntime(timeSource, log)
 
     /** Driver Station lines, graphs and logs of this robot and its coroutines */
     val telemetry = RobotTelemetry({ runtime.elapsed }, log)
+
+    /** Actions that can be started from the robot's graphs page or by scripts, for testing and tuning */
+    val commands = RemoteCommands()
 
     override val runner: RobotRunner get() = this
 
@@ -66,7 +85,7 @@ class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -
 
     /** Initializes all components and launches [onInit], which runs until [start] */
     fun init(onInit: suspend CoroutineScope.() -> Unit = {}) {
-        robot?.inOrder()?.forEach { it.initIfNew() }
+        robot?.components()?.forEach { it.initIfNew() }
         initJob = runtime.launch("init", onInit)
     }
 
@@ -75,11 +94,12 @@ class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -
      * then runs coroutines
      */
     fun tick() {
-        inputs.forEach { it() }
+        // Indexed loops: iterators would be garbage, every loop
+        for (i in inputs.indices) inputs[i]()
         robot?.let { robot ->
-            val components = robot.inOrder()
-            components.forEach { it.initIfNew() }
-            components.forEach { it.runUpdate() }
+            val components = robot.components()
+            for (i in components.indices) components[i].initIfNew()
+            for (i in components.indices) components[i].runUpdate()
         }
         runtime.tick()
     }
@@ -98,7 +118,7 @@ class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -
         } catch (e: Throwable) {
             failure = e
         }
-        for (component in robot?.inOrder()?.asReversed().orEmpty()) {
+        for (component in robot?.components()?.asReversed().orEmpty()) {
             try {
                 component.runStopIfInitialized()
             } catch (e: Throwable) {

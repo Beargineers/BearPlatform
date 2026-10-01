@@ -22,6 +22,16 @@ class PidTest {
     ) = Pid(outputLimit, integralLimit, integralZone, timeSource = time) { gains }
 
     @Test
+    fun pidCanUseAMeasuredRate() {
+        val time = TestTimeSource()
+        val pid = Pid(timeSource = time) { PidGains(p = 0.0, d = 1.0) }
+        // Measured, so it counts from the first update and doesn't jump when the error does
+        assertEquals(-0.2, pid.update(5.0, rate = -0.2), 1e-9)
+        time += 10.milliseconds
+        assertEquals(-0.3, pid.update(20.0, rate = -0.3), 1e-9)
+    }
+
+    @Test
     fun proportional() {
         gains = PidGains(p = 0.5)
         val pid = pid(outputLimit = 1.0)

@@ -15,8 +15,8 @@ import kotlin.math.roundToLong
 /**
  * A DC motor from the robot configuration, as a part of [parent]: `val fly1 = Motor(this, "fly1")`.
  *
- * Its direction, braking, encoder resolution and gearing are config settings, so they can be fixed without
- * rebuilding: `shooter.fly1.direction = R`. The constructor arguments are the defaults.
+ * Its direction, braking, speed control, encoder resolution and gearing are config settings, so they can be fixed
+ * without rebuilding: `shooter.fly1.direction = R`. The constructor arguments are the defaults.
  *
  * Position and velocity are measured at the output, after [gearRatio], using [ticksPerTurn].
  */
@@ -27,6 +27,7 @@ class Motor(
     device: String = name,
     direction: Direction = Direction.FORWARD,
     brake: Boolean = true,
+    velocityControl: Boolean = false,
     ticksPerTurn: Double? = null,
     gearRatio: Double = 1.0,
 ) : Component(parent, name) {
@@ -34,6 +35,17 @@ class Motor(
 
     /** Whether the motor holds its position at zero power, instead of coasting */
     val brake by config(brake)
+
+    /**
+     * Whether the hub holds the motor's speed using its encoder: [power] then asks for a fraction of the motor's top
+     * speed, which the motor keeps whatever the load, friction or battery, even at low powers that wouldn't move it
+     * otherwise. The top speed comes from the motor type in the robot configuration; for goBILDA and REV motors it is
+     * right whatever the gearbox.
+     *
+     * Needs the encoder plugged in. Without it the hub never sees the motor move, so it keeps raising the power as long
+     * as any speed is asked for, up to full: the motor overshoots, and a small stick push ends at full speed.
+     */
+    val velocityControl by config(velocityControl)
 
     /**
      * Encoder ticks per turn of the motor's own output shaft: the encoder resolution "at the output shaft" from the
@@ -56,11 +68,12 @@ class Motor(
 
     private var appliedDirection: Direction? = null
     private var appliedBrake: Boolean? = null
+    private var appliedVelocityControl: Boolean? = null
     private var zeroTicks = 0
 
     /**
-     * Power from -1.0 to 1.0. Values outside are clamped. The motor is only sent new values,
-     * which keeps the loop fast when code sets the same power every loop.
+     * Power from -1.0 to 1.0, or with [velocityControl] the fraction of top speed. Values outside are clamped. The
+     * motor is only sent new values, which keeps the loop fast when code sets the same power every loop.
      */
     var power: Double = 0.0
         set(value) {
@@ -85,7 +98,6 @@ class Motor(
     }
 
     override fun init() {
-        device.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
         applySettings()
         resetPosition()
         device.power = 0.0
@@ -107,6 +119,13 @@ class Motor(
         if (appliedBrake != brake) {
             device.zeroPowerBehavior = if (brake) DcMotor.ZeroPowerBehavior.BRAKE else DcMotor.ZeroPowerBehavior.FLOAT
             appliedBrake = brake
+        }
+        val velocityControl = velocityControl
+        if (appliedVelocityControl != velocityControl) {
+            device.mode = if (velocityControl) DcMotor.RunMode.RUN_USING_ENCODER else DcMotor.RunMode.RUN_WITHOUT_ENCODER
+            // Power means something else in the new mode: send it again
+            device.power = power
+            appliedVelocityControl = velocityControl
         }
     }
 

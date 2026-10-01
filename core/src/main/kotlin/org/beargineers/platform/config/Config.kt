@@ -29,6 +29,9 @@ object Config {
         private set
 
     private val declarations = ConcurrentHashMap<String, Declaration<*>>()
+
+    // Keys declared in this round: since the robot of the current opmode started being built
+    private val declaredThisRound = ConcurrentHashMap.newKeySet<String>()
     private val types = ConcurrentHashMap<KClass<*>, ConfigType<*>>(standardConfigTypes())
 
     /** The season's field, needed to read tile codes like `F6BL` in [Point][org.beargineers.platform.geometry.Point] and [Pose][org.beargineers.platform.geometry.Pose] values */
@@ -95,12 +98,25 @@ object Config {
         )
     }
 
+    /**
+     * Starts a new round of declarations, as each opmode builds its own robot. A key declared again in a new round
+     * takes the new declaration, so the robots of different opmodes may give a setting different defaults. Within a
+     * round, declarations of a key must agree.
+     */
+    internal fun newRound() {
+        declaredThisRound.clear()
+    }
+
     internal fun <T : Any> declare(key: String, type: ConfigType<T>, default: T?, optional: Boolean): Declaration<T> {
         val declaration = Declaration(key, type, default, optional)
-        val previous = declarations.putIfAbsent(key, declaration) ?: return declaration
+        if (declaredThisRound.add(key)) {
+            declarations[key] = declaration
+            return declaration
+        }
+        val previous = declarations.getValue(key)
 
-        // Declaring a key again shares the setting: another instance of the same class, or the robot being created
-        // again for the next opmode. Disagreeing about what the setting is means two different things collide.
+        // Declaring a key again in a round shares the setting, like another instance of the same class. Disagreeing
+        // about what the setting is means two different things collide.
         val difference = when {
             previous.type != type -> "types ${previous.type.name} and ${type.name}"
             previous.default != default -> "defaults ${previous.defaultText} and ${declaration.defaultText}"

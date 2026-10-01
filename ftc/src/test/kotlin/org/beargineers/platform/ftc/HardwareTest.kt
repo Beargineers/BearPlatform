@@ -66,6 +66,20 @@ class HardwareTest {
     }
 
     @Test
+    fun velocityControlUsesTheEncoderMode() {
+        val robot = startRobot()
+        robot.shooter.flywheel.power = 0.4
+        Config.load("shooter.flywheel.velocityControl = yes")
+        host.runner.tick()
+        assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, flywheel.mode)
+        assertEquals(0.4, flywheel.power, "power sent again in the new mode")
+
+        Config.load("")
+        host.runner.tick()
+        assertEquals(DcMotor.RunMode.RUN_WITHOUT_ENCODER, flywheel.mode)
+    }
+
+    @Test
     fun positionAndVelocityAreMeasuredAfterGearing() {
         val robot = startRobot()
         turret.position = 769 // two motor turns of 384.5 ticks

@@ -1,5 +1,6 @@
 package org.beargineers.platform.ftc
 
+import org.beargineers.platform.input.RemoteCommands
 import org.beargineers.platform.telemetry.RobotTelemetry
 import kotlin.time.DurationUnit
 
@@ -17,8 +18,14 @@ internal object LiveTelemetry {
     @Volatile
     var running = false
 
-    fun publish(telemetry: RobotTelemetry) {
+    /** The commands the opmode offers; none are, once it stops */
+    @Volatile
+    var commands: RemoteCommands? = null
+        private set
+
+    fun publish(telemetry: RobotTelemetry, commands: RemoteCommands) {
         current = telemetry
+        this.commands = commands
         run++
     }
 }
@@ -30,12 +37,19 @@ internal object LiveTelemetry {
 internal object GraphsPage {
     const val PATH = "/bear/graphs"
     const val DATA_PATH = "/bear/graphs/data"
+    const val COMMAND_PATH = "/bear/command"
 
     /**
-     * What the page polls for: samples after [since], the Driver Station lines, the current time in seconds, and
-     * which opmode run it all belongs to.
+     * What the page polls for: samples after [since], the Driver Station lines, the commands offered, the current
+     * time in seconds, and which opmode run it all belongs to.
      */
-    fun data(telemetry: RobotTelemetry?, run: Int, running: Boolean, since: Long): String {
+    fun data(
+        telemetry: RobotTelemetry?,
+        run: Int,
+        running: Boolean,
+        since: Long,
+        commands: List<RemoteCommands.Status> = emptyList(),
+    ): String {
         val samples = telemetry?.samplesSince(since)
         val time = if (running) telemetry?.now?.toDouble(DurationUnit.SECONDS) else samples?.lastTime
         return buildString {
@@ -45,6 +59,10 @@ internal object GraphsPage {
             append(",\"time\":").append(rounded(time ?: 0.0))
             append(",\"lines\":[")
             telemetry?.lines.orEmpty().joinTo(this, ",") { json(it) }
+            append("],\"commands\":[")
+            commands.joinTo(this, ",") {
+                "{\"name\":${json(it.name)},\"started\":${it.started},\"finished\":${it.finished}}"
+            }
             append("],\"series\":{")
             samples?.series.orEmpty().entries.joinTo(this, ",") { (name, points) ->
                 json(name) + ":[" + points.joinToString(",") { "[${rounded(it.time)},${it.value}]" } + "]"
@@ -77,6 +95,7 @@ internal object GraphsPage {
         |  <label>Last <select id="window"><option>5</option><option selected>20</option><option>60</option></select> s</label>
         |  <span id="status" class="muted"></span>
         |</div>
+        |<div id="commands" class="row"></div>
         |<div id="charts"></div>
         |<h2>Driver Station</h2>
         |<pre id="lines"></pre>
@@ -89,7 +108,7 @@ internal object GraphsPage {
 
     private fun rounded(seconds: Double) = Math.round(seconds * 1000) / 1000.0
 
-    private fun json(text: String): String = buildString {
+    fun json(text: String): String = buildString {
         append('"')
         for (c in text) {
             when {
@@ -111,6 +130,8 @@ internal object GraphsPage {
         const statusEl = document.getElementById('status');
         const pauseEl = document.getElementById('pause');
         const windowEl = document.getElementById('window');
+        const commandsEl = document.getElementById('commands');
+        let commandNames = '';
         const charts = new Map();
         const HINT = 'Values show up here as code records them with graph("name", value).';
         let since = 0, run = null, now = 0, paused = false;
@@ -191,6 +212,25 @@ internal object GraphsPage {
           }
         }
 
+        // Buttons for the commands the opmode offers; "…" while one runs
+        function showCommands(commands) {
+          const names = commands.map(c => c.name).join('\n');
+          if (names !== commandNames) {
+            commandNames = names;
+            commandsEl.textContent = '';
+            for (const c of commands) {
+              const button = document.createElement('button');
+              button.type = 'button';
+              button.dataset.name = c.name;
+              button.onclick = () => fetch('$COMMAND_PATH?name=' + encodeURIComponent(c.name), { method: 'POST' });
+              commandsEl.append(button);
+            }
+          }
+          commands.forEach((c, i) => {
+            commandsEl.children[i].textContent = c.name + (c.finished < c.started ? ' …' : '');
+          });
+        }
+
         async function poll() {
           try {
             const response = await fetch('$DATA_PATH?since=' + since, { cache: 'no-store' });
@@ -208,6 +248,7 @@ internal object GraphsPage {
             }
             now = data.time;
             linesEl.textContent = data.lines.join('\n');
+            showCommands(data.running ? data.commands : []);
             statusEl.textContent = data.running ? '' :
               data.run === 0 ? 'No opmode has run yet' : 'No opmode running, showing the last one';
           } catch (e) {

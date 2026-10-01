@@ -105,7 +105,7 @@ class GraphsPageTest {
 
         assertEquals(
             """{"run":3,"running":true,"seq":1,"time":1.5,"lines":["Action: turn \"by\" 90°"],""" +
-                """"series":{"turn error":[[1.5,12.5]]}}""",
+                """"commands":[],"series":{"turn error":[[1.5,12.5]]}}""",
             GraphsPage.data(telemetry, run = 3, running = true, since = 0)
         )
     }
@@ -129,7 +129,7 @@ class GraphsPageTest {
     @Test
     fun beforeAnyOpMode() {
         assertEquals(
-            """{"run":0,"running":false,"seq":0,"time":0.0,"lines":[],"series":{}}""",
+            """{"run":0,"running":false,"seq":0,"time":0.0,"lines":[],"commands":[],"series":{}}""",
             GraphsPage.data(null, run = 0, running = false, since = 0)
         )
     }

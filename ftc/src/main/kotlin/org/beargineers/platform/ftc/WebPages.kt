@@ -24,7 +24,9 @@ import java.util.zip.ZipOutputStream
  * Pages served by the Control Hub's own web server, so they work whenever the robot is on, opmode or not:
  * - `http://192.168.43.1:8080/bear/config` edits the config; changes take effect right away.
  * - `/bear/config.properties` gets (GET) or replaces (POST, `text/plain`) the config text, for scripts.
- * - `/bear/graphs` draws live graphs of what code records with `graph(...)`, and shows the Driver Station lines.
+ * - `/bear/graphs` draws live graphs of what code records with `graph(...)`, shows the Driver Station lines, and has
+ *   buttons for the commands the opmode offers; `/bear/graphs/data` is the same as JSON.
+ * - `/bear/command?name=...` (POST) starts a command the opmode offers, for scripts.
  * - `/bear/matchLogs` downloads the SDK's match logs as a zip, and deletes them from the robot.
  */
 object WebPages {
@@ -44,13 +46,30 @@ object WebPages {
         manager.register(SettingsPage.RAW_PATH) { session -> rawConfig(config, session, log) }
         manager.register(GraphsPage.PATH) { html(Status.OK, GraphsPage.html()) }
         manager.register(GraphsPage.DATA_PATH) { session -> graphsData(session) }
+        manager.register(GraphsPage.COMMAND_PATH) { session -> startCommand(session, log) }
     }
 
     private fun graphsData(session: IHTTPSession): Response {
         val since = session.parameters["since"]?.firstOrNull()?.toLongOrNull() ?: 0L
-        val data = GraphsPage.data(LiveTelemetry.current, LiveTelemetry.run, LiveTelemetry.running, since)
-        return NanoHTTPD.newFixedLengthResponse(Status.OK, "application/json; charset=UTF-8", data)
-            .apply { addHeader("Cache-Control", "no-store") }
+        val commands = LiveTelemetry.commands?.offered.orEmpty()
+        val data = GraphsPage.data(LiveTelemetry.current, LiveTelemetry.run, LiveTelemetry.running, since, commands)
+        return json(Status.OK, data)
+    }
+
+    private fun startCommand(session: IHTTPSession, log: (String) -> Unit): Response {
+        if (session.method != NanoHTTPD.Method.POST) {
+            return text(Status.METHOD_NOT_ALLOWED, "Start a command with POST ${GraphsPage.COMMAND_PATH}?name=...\n")
+        }
+        val name = session.parameters["name"]?.firstOrNull()
+            ?: run {
+                session.parseBody(HashMap())
+                session.parameters["name"]?.firstOrNull()
+            }
+            ?: return text(Status.BAD_REQUEST, "Which command? Add name=...\n")
+        val run = LiveTelemetry.commands?.start(name)
+            ?: return text(Status.NOT_FOUND, "No command '$name' is offered now; is the opmode running?\n")
+        log("Command '$name' started from the web, run $run")
+        return json(Status.OK, "{\"name\":${GraphsPage.json(name)},\"run\":$run}")
     }
 
     private fun configPage(config: RobotConfig, session: IHTTPSession, log: (String) -> Unit): Response {
@@ -73,6 +92,9 @@ object WebPages {
         } catch (e: ConfigException) {
             log("Config from the settings page rejected: ${e.problems.joinToString("; ")}")
             html(Status.BAD_REQUEST, SettingsPage.html(config, Outcome.Rejected(e.problems), text))
+        } catch (e: Exception) {
+            log("Config from the settings page couldn't be saved: ${e.stackTraceToString()}")
+            html(Status.INTERNAL_ERROR, SettingsPage.html(config, Outcome.Failed(e), text))
         }
     }
 
@@ -85,6 +107,9 @@ object WebPages {
         } catch (e: ConfigException) {
             log("Bundled config rejected: ${e.problems.joinToString("; ")}")
             html(Status.BAD_REQUEST, SettingsPage.html(config, Outcome.Rejected(e.problems)))
+        } catch (e: Exception) {
+            log("Config edits couldn't be thrown away: ${e.stackTraceToString()}")
+            html(Status.INTERNAL_ERROR, SettingsPage.html(config, Outcome.Failed(e)))
         }
     }
 
@@ -102,6 +127,9 @@ object WebPages {
         } catch (e: ConfigException) {
             log("Config from a script rejected: ${e.problems.joinToString("; ")}")
             text(Status.BAD_REQUEST, e.problems.joinToString("\n", postfix = "\n"))
+        } catch (e: Exception) {
+            log("Config from a script couldn't be saved: ${e.stackTraceToString()}")
+            text(Status.INTERNAL_ERROR, "Not saved: $e\n")
         }
     }
 
@@ -129,6 +157,10 @@ object WebPages {
     // The SDK's web server answers in UTF-8 whatever the charset, and logs a warning unless it is spelled exactly so
     private fun html(status: Status, html: String): Response =
         NanoHTTPD.newFixedLengthResponse(status, "text/html; charset=UTF-8", html)
+
+    private fun json(status: Status, json: String): Response =
+        NanoHTTPD.newFixedLengthResponse(status, "application/json; charset=UTF-8", json)
+            .apply { addHeader("Cache-Control", "no-store") }
 
     private fun text(status: Status, text: String): Response =
         NanoHTTPD.newFixedLengthResponse(status, "text/plain; charset=UTF-8", text)

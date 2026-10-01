@@ -9,8 +9,10 @@ import org.beargineers.platform.geometry.FieldSymmetry
 import org.beargineers.platform.geometry.Point
 import org.beargineers.platform.geometry.Pose
 import org.beargineers.platform.units.Angle
+import org.beargineers.platform.units.AngularVelocity
 import org.beargineers.platform.units.Distance
 import org.beargineers.platform.units.Heading
+import org.beargineers.platform.units.LinearVelocity
 import org.beargineers.platform.units.cm
 import org.beargineers.platform.units.degrees
 import org.beargineers.platform.units.inch
@@ -62,6 +64,21 @@ class ConfigTypeTest {
         assertClose(1.5.radians, parse(Angle::class, "1.5 rad"))
         assertClose(90.degrees, parse(Angle::class, "0.25rot"))
         assertEquals(-90.0, parse(Heading::class, "270").inDegrees, 1e-9)
+    }
+
+    @Test
+    fun speeds() {
+        assertEquals(30.0, parse(LinearVelocity::class, "30").inCmPerSecond, 1e-9)
+        assertEquals(30.0, parse(LinearVelocity::class, "30cm/s").inCmPerSecond, 1e-9)
+        assertEquals(12.0, parse(LinearVelocity::class, "12 in / s").inInchesPerSecond, 1e-9)
+        assertEquals(150.0, parse(LinearVelocity::class, "1.5m/s").inCmPerSecond, 1e-9)
+        val thrown = assertFailsWith<IllegalArgumentException> { parse(LinearVelocity::class, "30 cm") }
+        assertTrue("30cm/s" in thrown.message!!, thrown.message)
+
+        assertEquals(90.0, parse(AngularVelocity::class, "90").inDegreesPerSecond, 1e-9)
+        assertEquals(90.0, parse(AngularVelocity::class, "90°/s").inDegreesPerSecond, 1e-9)
+        assertEquals(60.0, parse(AngularVelocity::class, "60 rpm").inRpm, 1e-9)
+        assertEquals(1.0, parse(AngularVelocity::class, "1rad/s").inRadiansPerSecond, 1e-9)
     }
 
     @Test

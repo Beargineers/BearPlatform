@@ -202,7 +202,9 @@ driver1.back.onPress { robot.drive.checkWheels() }   // each wheel in turn, to c
 `driveWith` drives robot-centric: the left stick moves, the right stick turns. When an action drives the robot, like
 driving to a target, pushing a stick past halfway stops the action, and a thumb resting on a stick doesn't.
 Code can also drive with powers relative to the robot, `drive.drive(forward = 0.5, right = 0.2, turn = 0.1)`, where
-turn is counterclockwise like all angles. Settings: `drive.maxPower` scales everything down (0.3 for the first tries),
+turn is counterclockwise like all angles. With `MecanumDrive(this, velocityControl = true)` the hub holds each wheel's
+speed by its encoder: powers then ask for speeds, so even small ones move the robot, whatever the battery. It needs the
+drive encoders plugged in: without one, the hub keeps raising that wheel's power, up to full. Settings: `drive.maxPower` scales everything down (0.3 for the first tries),
 `drive.strafeScale` makes up for mecanum wheels slipping sideways, and each motor's `drive.leftFront.direction` etc.
 
 `MecanumDrive` is a `Drivetrain`, which is what teleop driving and path following use. Other kinds, like tank or
@@ -237,6 +239,39 @@ Field-centric driving needs the season's `Field` to say where the drivers stand:
 `FieldDirection.AUDIENCE_LEFT` in DECODE. Without a localizer, pass the heading the robot had when pointing away from
 the drivers instead of `driversFace`.
 
+#### Path following
+
+```kotlin
+class GammaRobot(host: FtcHost) : Robot(host) {
+    val localizer = PinpointLocalizer(this)
+    val drive = MecanumDrive(this)
+    val follower = PathFollower(this, drive, localizer)
+}
+
+suspend fun GammaRobot.collect() {
+    follower.driveTo(SPIKE_1)                                          // drives there and stops
+    follower.drivePath(Waypoint(A), Waypoint(B, speed = 0.5), Waypoint(C))   // through A and B, stops at C
+    follower.driveTo(localizer.pose + RobotOffset(forward = 30.cm))     // 30 cm ahead
+}
+```
+
+`PathFollower` drives to a pose with three PIDs on how far the robot still has to go: forward, sideways (per cm) and
+around (per degree). Their D terms use the velocity the localizer measures, so late readings don't make them jump.
+Points on the way count as passed within `follower.passTolerance` (8 cm, 5°); where it stops, the robot has arrived
+within `follower.tolerance` (2 cm, 1°) once it's slower than `follower.stoppedSpeed`. A robot that gets no closer for
+`follower.stallTime`, like one pushing against a wall, gives up on the point: `driveTo` returns false. Driving takes
+over the drivetrain: a new drive action or the sticks stop it, and the motors stop with it. For the other alliance,
+convert the poses with `field.forAlliance`.
+
+Small powers don't move a robot against its wheels' friction, so until it is within tolerance the follower adds
+friction power toward the target: `follower.frictionPower` forward (0.08), `frictionStrafePower` sideways (0.14, mecanum
+wheels need more) and `frictionTurnPower` (0.1). Measure them by raising a power slowly until the robot moves.
+
+The default gains were tuned on a 12 kg mecanum robot with `drive.nominalVoltage = 12`: 60 cm in 0.9 s, a quarter turn
+in 0.7 s, within 1 cm and 1°. To tune another robot, offer drives as commands (below) and change
+`follower.forwardGains`, `strafeGains` and `headingGains` live while watching the `forward error cm`, `strafe error cm`
+and `heading error deg` graphs, next to the powers they turn into; the log says how each drive ended.
+
 #### Config on the robot
 
 The app's config is `res/raw/config.properties` of the season app module. Every opmode loads it at INIT and checks
@@ -256,6 +291,19 @@ downloads the SDK's match logs. Over USB, run `adb forward tcp:8080 tcp:8080` an
 
 `http://192.168.43.1:8080/bear/graphs` draws everything code records with `graph(...)`, live, one chart per value,
 and shows the Driver Station lines. It needs no internet, and shows the last opmode after it stops.
+
+For testing and tuning, an opmode can offer commands, which show up as buttons on the graphs page:
+
+```kotlin
+override suspend fun CoroutineScope.onStart() {
+    command("forward 60 cm") { robot.follower.driveTo(FORWARD) }   // offered until the opmode ends
+}
+```
+
+`scripts/command.sh "forward 60 cm"` starts one from the laptop (`POST /bear/command?name=...`), and
+`/bear/graphs/data` has the graphs, Driver Station lines and commands as JSON for tools: together they let a script
+run a drive, read what it did, change gains with `scripts/updateConfig.sh`, and try again. Someone should be at the
+Driver Station, ready to stop the robot.
 
 Every opmode watches the battery: a `Battery: 12.6 V, lowest 12.1 V` line on the Driver Station, a `battery` graph,
 a warning at INIT below `battery.low` (12 V by default), and the lowest reading in the log at the end.
@@ -284,10 +332,10 @@ a warning at INIT below `battery.low` (12 V by default), and the lowest reading 
    3. ~~config files on the robot and the settings web page~~
 6. ~~`core`: control (PID, feedforward, debouncer, hysteresis, slew rate)~~
 7. ~~telemetry: Driver Station lines, live graphs page, logs, battery~~
-8. driving
+8. ~~driving~~
    1. ~~drivetrain: `Drivetrain`, `MecanumDrive`, teleop driving~~
    2. ~~localization: Pinpoint odometry, field-centric driving~~
-   3. path following
+   3. ~~path following: `PathFollower`, PID to point~~
 9. Port a real robot onto the platform
 
 ## Build

@@ -25,6 +25,7 @@ class ConfigFiles(private val directory: File, build: String, private val bundle
     /** Keeps [text] as this build's edits, and forgets edits made for earlier builds */
     fun save(text: String) {
         directory.mkdirs()
+        check(directory.isDirectory) { "Can't keep config edits in $directory: something there isn't a folder" }
         deleteEdits(except = editsFile)
         // Write a separate file and swap it in, so losing power halfway can't leave a broken config behind
         val temporary = File(directory, editsFile.name + ".tmp")

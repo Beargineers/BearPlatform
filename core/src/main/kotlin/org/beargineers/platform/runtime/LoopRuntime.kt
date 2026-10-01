@@ -33,7 +33,8 @@ import kotlin.time.TimeSource
  */
 @OptIn(InternalCoroutinesApi::class)
 class LoopRuntime(
-    private val timeSource: TimeSource = TimeSource.Monotonic,
+    /** The clock of this runtime; controllers that measure time, like [Pid][org.beargineers.platform.control.Pid], use it too */
+    val timeSource: TimeSource = TimeSource.Monotonic,
     /** Receives messages about named steps (see [withName]). The ftc module sends them to the robot log. */
     val log: (String) -> Unit = {},
 ) : AbstractCoroutineContextElement(LoopRuntime) {

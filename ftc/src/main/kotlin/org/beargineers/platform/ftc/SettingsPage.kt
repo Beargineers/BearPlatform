@@ -13,6 +13,9 @@ internal object SettingsPage {
         object Saved : Outcome
         object Reset : Outcome
         class Rejected(val problems: List<String>) : Outcome
+
+        /** Saving went wrong on the robot, like the file not being written */
+        class Failed(val error: Throwable) : Outcome
     }
 
     /** The page showing [text] in the editor: the config in effect, or what was posted if [outcome] rejected it */
@@ -27,6 +30,10 @@ internal object SettingsPage {
             is Outcome.Rejected -> """
                 <div class="bad"><p>Not saved: some values can't be read. The robot keeps using its previous config.</p>
                 ${list(outcome.problems)}</div>
+            """.trimIndent()
+            is Outcome.Failed -> """
+                <div class="bad"><p>Not saved: the robot couldn't store it. It keeps using its previous config.</p>
+                ${list(listOf(outcome.error.toString()))}</div>
             """.trimIndent()
         }
 
