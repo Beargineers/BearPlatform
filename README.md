@@ -162,8 +162,9 @@ Motors and servos are components too, so their settings live in config under the
 ```kotlin
 class Turret(parent: Component) : Component(parent) {
     // goBILDA 435 RPM: 384.5 ticks per turn of its shaft, from goBILDA's product page. Settings like
-    // turret.motor.direction, .brake, .ticksPerTurn and .gearRatio can be changed in config.
-    val motor = Motor(this, "motor", device = "turret", ticksPerTurn = 384.5, gearRatio = 121.0 / 16)
+    // turret.motor.direction, .brake, .ticksPerTurn and .gearRatio can be changed in config. keepZero: the turret
+    // is centered by hand once, and autonomous and TeleOp share that zero.
+    val motor = Motor(this, "motor", device = "turret", ticksPerTurn = 384.5, gearRatio = 121.0 / 16, keepZero = true)
     val pinpoint by hardware<GoBildaPinpointDriver>()  // any other device from the robot configuration
 
     override fun update() {
@@ -176,8 +177,16 @@ class Shooter(parent: Component) : Component(parent) {
     val latch = PositionServo(this, "latch")
     val latchOpen by config(0.3)
     val latchClosed by config(0.65)
+
+    fun open() { latch.position = latchOpen }          // only sent to the hub when it changes
 }
 ```
+
+`pwmMin` and `pwmMax` set a servo's pulse widths for devices that need other ones than the SDK's, like goBILDA's RGB
+light (500 and 2500).
+
+With `velocityControl`, a motor whose encoder doesn't move for half a second under power is stopped, and the Driver
+Station says why: without an encoder signal the hub would run it up to full power.
 
 `position` and `velocity` need `ticksPerTurn`, and fail without it, telling what to set; motors whose encoders
 aren't used need nothing. The motor type picked in the robot configuration isn't used for it, as it is wrong for most

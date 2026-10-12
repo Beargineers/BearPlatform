@@ -1,16 +1,20 @@
 package org.beargineers.platform.ftc
 
+import com.qualcomm.robotcore.hardware.PwmControl
 import com.qualcomm.robotcore.hardware.Servo
 import com.qualcomm.robotcore.hardware.Servo.Direction
 import org.beargineers.platform.component.Component
 import org.beargineers.platform.config.config
+import org.beargineers.platform.config.optionalConfig
 
 /**
  * A servo that turns to a position, as a part of [parent]: `val latch = PositionServo(this, "latch")`.
  *
- * Its direction is a config setting (`shooter.latch.direction = R`); the constructor argument is the default.
- * Keep the positions it moves to as config settings of the component that uses it:
+ * Its direction and pulse widths are config settings (`shooter.latch.direction = R`); the constructor argument is the
+ * default. Keep the positions it moves to as config settings of the component that uses it:
  * `val latchOpen by config(0.3)`, then `latch.position = latchOpen`.
+ *
+ * Each new position is a command to the hub, so it is only sent when it changes.
  */
 class PositionServo(
     parent: Component,
@@ -21,10 +25,19 @@ class PositionServo(
 ) : Component(parent, name) {
     val direction by config(direction)
 
+    /**
+     * Pulse widths in microseconds for positions 0 and 1, when the device needs other ones than the SDK's 600 and
+     * 2400: goBILDA's RGB indicator light wants 500 and 2500
+     */
+    val pwmMin by optionalConfig<Double>()
+    val pwmMax by optionalConfig<Double>()
+
     /** The SDK servo, for anything this class doesn't cover */
     val device: Servo by hardware(device)
 
     private var appliedDirection: Direction? = null
+    private var appliedPwmMin: Double? = null
+    private var appliedPwmMax: Double? = null
 
     /**
      * Position from 0.0 to 1.0. Values outside are clamped. The servo holds still until the first position is set,
@@ -35,22 +48,32 @@ class PositionServo(
             val clamped = value.coerceIn(0.0, 1.0)
             if (clamped != field) {
                 field = clamped
-                device.position = clamped
+                timed("servo writes", counted = true) { device.position = clamped }
             }
         }
 
     override fun init() {
-        applyDirection()
+        applySettings()
     }
 
     override fun update() {
-        applyDirection()
+        applySettings()
     }
 
-    private fun applyDirection() {
+    private fun applySettings() {
         if (appliedDirection != direction) {
             device.direction = direction
             appliedDirection = direction
+        }
+        val min = pwmMin
+        val max = pwmMax
+        if (min != appliedPwmMin || max != appliedPwmMax) {
+            (device as? PwmControl)?.let { pwm ->
+                val default = PwmControl.PwmRange.defaultRange
+                pwm.pwmRange = PwmControl.PwmRange(min ?: default.usPulseLower, max ?: default.usPulseUpper)
+            }
+            appliedPwmMin = min
+            appliedPwmMax = max
         }
     }
 }

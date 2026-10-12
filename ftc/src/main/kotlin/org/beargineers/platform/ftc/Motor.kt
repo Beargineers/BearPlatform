@@ -11,6 +11,10 @@ import org.beargineers.platform.units.AngularVelocity
 import org.beargineers.platform.units.perSecond
 import org.beargineers.platform.units.rotations
 import kotlin.math.abs
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * A DC motor from the robot configuration, as a part of [parent]: `val fly1 = Motor(this, "fly1")`.
@@ -30,7 +34,10 @@ class Motor(
     velocityControl: Boolean = false,
     ticksPerTurn: Double? = null,
     gearRatio: Double = 1.0,
+    keepZero: Boolean = false,
 ) : Component(parent, name) {
+    private val deviceName = device
+
     val direction by config(direction)
 
     /** Whether the motor holds its position at zero power, instead of coasting */
@@ -43,9 +50,17 @@ class Motor(
      * right whatever the gearbox.
      *
      * Needs the encoder plugged in. Without it the hub never sees the motor move, so it keeps raising the power as long
-     * as any speed is asked for, up to full: the motor overshoots, and a small stick push ends at full speed.
+     * as any speed is asked for, up to full: the motor overshoots, and a small stick push ends at full speed. So when
+     * the encoder doesn't move for half a second under power, the motor is stopped and the Driver Station says why.
      */
     val velocityControl by config(velocityControl)
+
+    /**
+     * Keeps the position's zero from the first INIT after the robot app started, instead of taking a new one at every
+     * INIT, so autonomous and TeleOp share it: for a turret or an arm set to a known position once, before the match.
+     * [resetPosition] still sets a new zero. A hub that lost power counts from 0 again, which this can't tell.
+     */
+    val keepZero by config(keepZero)
 
     /**
      * Encoder ticks per turn of the motor's own output shaft: the encoder resolution "at the output shaft" from the
@@ -87,7 +102,7 @@ class Motor(
         set(value) {
             val clamped = value.coerceIn(-1.0, 1.0)
             field = clamped
-            if (clamped == sentPower) return
+            if (clamped == sentPower || encoderStuck) return
             val exact = clamped == 0.0 || clamped == 1.0 || clamped == -1.0
             if (!exact && abs(clamped - sentPower) < powerTolerance) return
             send(clamped)
@@ -111,19 +126,51 @@ class Motor(
 
     val velocity: AngularVelocity get() = outputTurns(device.velocity).rotations.perSecond
 
-    /** Makes the current position the new zero */
+    /** Makes the current position the new zero; with [keepZero], for the following opmodes too */
     fun resetPosition() {
         zeroTicks = device.currentPosition
+        if (keepZero) keptZeros[deviceName] = zeroTicks
     }
 
     override fun init() {
         applySettings()
-        resetPosition()
+        zeroTicks = if (keepZero) keptZeros.getOrPut(deviceName) { device.currentPosition } else device.currentPosition
         device.power = 0.0
     }
 
     override fun update() {
         applySettings()
+        if (velocityControl) checkEncoder()
+        if (encoderStuck) show(path, "stopped: its encoder doesn't move under velocity control. Is it plugged in?")
+    }
+
+    // Velocity control without an encoder signal runs the motor up to full power: stop it instead
+    private var encoderStuck = false
+    private var lastCheck = Duration.ZERO
+    private var lastCheckedTicks = 0
+    private var stillSince: Duration? = null
+
+    private fun checkEncoder() {
+        val now = runtime.elapsed
+        // Reading the encoder may take a bulk read; a few times a second is enough
+        if (encoderStuck || now - lastCheck < ENCODER_CHECK_EVERY) return
+        lastCheck = now
+        val current = device.currentPosition
+        if (abs(sentPower) < 0.2 || current != lastCheckedTicks) {
+            lastCheckedTicks = current
+            stillSince = null
+            return
+        }
+        val since = stillSince ?: now.also { stillSince = it }
+        if (now - since >= ENCODER_STUCK_AFTER) {
+            encoderStuck = true
+            val stuckAt = sentPower
+            send(0.0)
+            log(
+                String.format(Locale.US, "Stopped: velocity control is on, the power was %.2f, and the encoder didn't move. ", stuckAt) +
+                    "Is the encoder plugged in, or is the mechanism stuck?"
+            )
+        }
     }
 
     override fun stop() {
@@ -155,5 +202,18 @@ class Motor(
                 "like 1425.1 for goBILDA 117 RPM, 384.5 for goBILDA 435 RPM or 288 for REV Core Hex."
         )
         return ticks / ticksPerTurn / gearRatio
+    }
+
+    private companion object {
+        val ENCODER_CHECK_EVERY = 100.milliseconds
+        val ENCODER_STUCK_AFTER = 500.milliseconds
+
+        /** Zeros kept for the app's run, by device name in the robot configuration (see [keepZero]) */
+        val keptZeros = ConcurrentHashMap<String, Int>()
+    }
+
+    internal object KeptZeros {
+        /** For tests: as if the robot app had just started */
+        fun forget() = keptZeros.clear()
     }
 }

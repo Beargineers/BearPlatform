@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.hardware.DcMotor
 import com.qualcomm.robotcore.hardware.DcMotorEx
 import com.qualcomm.robotcore.hardware.DcMotorSimple
 import com.qualcomm.robotcore.hardware.HardwareMap
+import com.qualcomm.robotcore.hardware.PwmControl
 import com.qualcomm.robotcore.hardware.Servo
 import org.beargineers.platform.component.RobotRunner
 import java.lang.reflect.Proxy
@@ -73,9 +74,13 @@ class FakeServo {
     var position = Double.NaN
     var positionWrites = 0
     var direction = Servo.Direction.FORWARD
+    var pwmRange = PwmControl.PwmRange.defaultRange
 
-    val device: Servo = fake { method, args ->
+    /** Like the SDK's servos, it is a [PwmControl] too */
+    val device: Servo = fakeOf(Servo::class.java, PwmControl::class.java) { method, args ->
         when (method) {
+            "setPwmRange" -> pwmRange = args[0] as PwmControl.PwmRange
+            "getPwmRange" -> pwmRange
             "setPosition" -> {
                 position = args[0] as Double
                 positionWrites++
@@ -95,12 +100,17 @@ object Unanswered
  * so fakes only have to handle what the code under test uses.
  */
 inline fun <reified T> fake(crossinline answer: (method: String, args: List<Any?>) -> Any?): T =
-    Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { proxy, method, args ->
+    fakeOf(T::class.java) { method, args -> answer(method, args) }
+
+/** Like [fake], implementing all of [interfaces]; it is cast to the first */
+@Suppress("UNCHECKED_CAST")
+fun <T> fakeOf(vararg interfaces: Class<*>, answer: (method: String, args: List<Any?>) -> Any?): T =
+    Proxy.newProxyInstance(interfaces[0].classLoader, arrayOf(*interfaces)) { proxy, method, args ->
         val arguments = args?.asList().orEmpty()
         when (method.name) {
             "equals" -> return@newProxyInstance proxy === arguments[0]
             "hashCode" -> return@newProxyInstance System.identityHashCode(proxy)
-            "toString" -> return@newProxyInstance "fake ${T::class.java.simpleName}"
+            "toString" -> return@newProxyInstance "fake ${interfaces[0].simpleName}"
         }
         val result = answer(method.name, arguments)
         when {
