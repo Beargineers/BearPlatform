@@ -184,7 +184,17 @@ class SignalsTest {
         assertTrue(fullPower.update(200.0))
         assertTrue(fullPower.update(100.0), "stays on until at or below 50")
         assertFalse(fullPower.update(50.0))
-        assertFailsWith<IllegalArgumentException> { Hysteresis(on = 1.0, off = 2.0) }
+        assertFailsWith<IllegalArgumentException> { Hysteresis(on = 1.0, off = 1.0) }
+    }
+
+    @Test
+    fun hysteresisTheOtherWayAround() {
+        // A ball is in when closer than 13 cm, and out only once farther than 17
+        val ballIn = Hysteresis(on = 13.0, off = 17.0)
+        assertFalse(ballIn.update(20.0))
+        assertTrue(ballIn.update(12.0))
+        assertTrue(ballIn.update(15.0), "stays in until 17 or farther")
+        assertFalse(ballIn.update(17.0))
     }
 
     @Test

@@ -109,6 +109,22 @@ class FakeDigitalChannel {
     }
 }
 
+class FakeDistanceSensor {
+    var cm = 50.0
+    var reads = 0
+
+    val device: com.qualcomm.robotcore.hardware.DistanceSensor = fake { method, args ->
+        when (method) {
+            "getDistance" -> {
+                check(args[0] == org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit.CM)
+                reads++
+                cm
+            }
+            else -> Unanswered
+        }
+    }
+}
+
 object Unanswered
 
 /**

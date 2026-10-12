@@ -34,19 +34,25 @@ class Debouncer(
 }
 
 /**
- * An on/off decision that doesn't flicker around its threshold: it turns on at [on] or above, and back off only
- * at [off] or below. Like running a flywheel at full power while it is far below its target speed.
+ * An on/off decision that doesn't flicker around its threshold. With [on] above [off], it turns on at [on] or above
+ * and back off only at [off] or below, like running a flywheel at full power while it is far below its target speed.
+ * With [on] below [off], it works the other way around: on at [on] or below, off at [off] or above, like a ball being
+ * in when a distance sensor sees it closer than 13 cm, and out only once it is farther than 17.
  */
 class Hysteresis(val on: Double, val off: Double, initial: Boolean = false) {
     init {
-        require(off < on) { "Hysteresis turns off below where it turns on, but off=$off and on=$on" }
+        require(on != off) { "Hysteresis needs a gap between where it turns on and off, but both are $on" }
     }
 
     var value: Boolean = initial
         private set
 
     fun update(input: Double): Boolean {
-        if (input >= on) value = true else if (input <= off) value = false
+        if (on > off) {
+            if (input >= on) value = true else if (input <= off) value = false
+        } else {
+            if (input <= on) value = true else if (input >= off) value = false
+        }
         return value
     }
 }

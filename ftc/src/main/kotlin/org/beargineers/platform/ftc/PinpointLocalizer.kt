@@ -125,7 +125,7 @@ class PinpointLocalizer(parent: Component, name: String = "localizer", device: S
 
         // On the robot, the Pinpoint is read on the device reader's thread, so the loop doesn't wait for it
         (robot.host as? FtcHost)?.deviceReader?.let { reader ->
-            reader.add("pinpoint", { readInterval }) { latest = readDevice() }
+            reader.add(path, { readInterval }) { latest = readDevice() }
             readInLoop = false
         }
     }

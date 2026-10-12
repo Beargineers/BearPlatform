@@ -74,8 +74,11 @@ class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -
     private var initJob: Job? = null
     private val inputs = mutableListOf<() -> Unit>()
 
-    /** Reads inputs, like gamepads, at the start of every [tick], before anything else runs */
-    internal fun readEveryTick(input: () -> Unit) {
+    /**
+     * Reads inputs at the start of every [tick], before anything else runs, so everything in a loop sees the same
+     * state: the gamepads, digital sensors, and the newest readings of devices read on another thread
+     */
+    fun readEveryTick(input: () -> Unit) {
         inputs += input
     }
 

@@ -200,6 +200,16 @@ class Intake(parent: Component) : Component(parent) {
 `intake.beam.onWhenLow` and `intake.beam.debounce` (a change counts only once it lasted that long) are config
 settings. Digital inputs come with the hub's bulk read: the first one read in a loop costs one bulk read of its hub.
 
+A `DistanceSensor` (REV's 2m sensor, or the distance of REV's color sensor) is read on the device reader's thread
+every `readInterval` (50 ms), and the loop takes the newest reading at its start: `ball.distance` is a `Distance`,
+or null when nothing is within `maxRange` (200 cm) or the sensor doesn't answer. REV's 2m sensor measures about every
+33 ms, and a read waits for a new measurement, asking the sensor over I2C again and again: a shorter interval only keeps
+the hubs' connection busy. Each read holds the connection for about 9 ms, so two sensors read every 50 ms take a
+third of it: turn a sensor's `reading` off while nothing needs it (`shooterBall.reading = isShooting`). While off,
+`distance` is null; turned back on, the sensor is read right away and `distance` stays null until that reading.
+Turning distances into decisions is the component's job: a ball in once closer than 13 cm and out only once farther
+than 17 is `Hysteresis(on = 13.0, off = 17.0)`.
+
 With `velocityControl`, a motor whose encoder doesn't move for half a second under power is stopped, and the Driver
 Station says why: without an encoder signal the hub would run it up to full power.
 
@@ -308,9 +318,14 @@ together. That, not the code, is what makes loops slow: a motor write costs abou
 - Motors are only sent a power that differs from what the hub has by at least `<motor>.powerTolerance` (0.005), so a
   PID nudging the power every loop doesn't write every loop. Stopping and full power are always sent exactly.
 - I2C sensors are read on the `DeviceReader`'s thread, one at a time, each at its own interval, so the loop doesn't
-  wait for them. A component adds its read in `init()`: `(robot.host as FtcHost).deviceReader?.add("color",
-  { readInterval }) { latest = sensor.read() }`, keeping the result in a `@Volatile` field for `update()`. Every read
-  takes connection time from everything else, so read as rarely as the robot can do with.
+  wait for them. A component adds its read in `init()`: `(robot.host as FtcHost).deviceReader?.add(path,
+  { readInterval }, { reading }) { latest = sensor.read() }`, keeping the result in a `@Volatile` field for
+  `update()`; the read is skipped while the optional `{ reading }` is false. Every read takes connection time from
+  everything else, so read as rarely as the robot can do with, and pause what nothing needs.
+- When the reads take more than `reader.budget` percent of the time (50), the Driver Station says so while they do,
+  naming the reads that take the most, and the log gets the first warning and any clearly worse one. Only what
+  lasted three seconds counts: a slow read now and then, like a 2m sensor's first one, takes up to 300 ms. On Beta, the
+  Pinpoint every 15 ms takes about 37%, and each distance sensor every 50 ms about 17%.
 - `telemetry.profile = yes` graphs where each loop's time goes (`time <part> ms`: each top-level part's update,
   coroutines, motor writes and how many per loop, battery, telemetry), what each part allocates (`alloc <part> KB`),
   garbage collection, and how busy the device reader keeps the connection (`reader busy %`, and each read's time and

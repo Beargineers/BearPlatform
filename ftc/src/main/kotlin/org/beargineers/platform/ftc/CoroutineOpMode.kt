@@ -24,7 +24,7 @@ import kotlin.time.Duration
  *
  * INIT loads the robot's config (see [RobotConfig]) and fails if a value can't be read. Other config problems,
  * like keys nothing uses, warnings of the robot's components, and a low battery are shown on the Driver Station
- * until START.
+ * until START. Device reads taking more of the time than `reader.budget` are shown while they do.
  *
  * Every loop reads the gamepads and all hub sensors (in one bulk read), updates the robot's components,
  * runs coroutines, and sends what they [show] to the Driver Station and the robot's graphs page.
@@ -131,8 +131,10 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
         loopTimer.loopStarted(runtime.elapsed)
         report.startLoop()
         for (i in hubs.indices) hubs[i].clearBulkCache()
+        val readsOverBudget = deviceReader.checkBudget(readerSettings.budget) { RobotLog.ww(LOG_TAG, "%s", it) }
         if (report.isCollecting) {
             header.forEach { report.show(it) }
+            if (readsOverBudget != null) report.show(readsOverBudget)
             loopTimer.report()
             if (report.isProfiling) {
                 memory.report()
@@ -159,6 +161,16 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
          * that the hubs' and the device reader's threads need, and makes garbage.
          */
         val minTime by config(5.milliseconds)
+    }
+
+    private val readerSettings = object : ConfigScope {
+        override val configScope = "reader"
+
+        /**
+         * Percent of the time the device reader may spend reading before the Driver Station and the log warn. Its
+         * reads hold the hubs' connection that the loop's motor powers and bulk reads need too.
+         */
+        val budget by config(50.0)
     }
 
     private var lastLoopEnd = 0L
