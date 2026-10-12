@@ -185,6 +185,21 @@ class Shooter(parent: Component) : Component(parent) {
 `pwmMin` and `pwmMax` set a servo's pulse widths for devices that need other ones than the SDK's, like goBILDA's RGB
 light (500 and 2500).
 
+Digital sensors, like limit switches, touch sensors and beam breaks, work like gamepad buttons, and are read with
+the gamepads at the start of every loop:
+
+```kotlin
+class Intake(parent: Component) : Component(parent) {
+    val beam = DigitalInput(this, "beam", onWhenLow = true)   // most beam breaks pull their line low when broken
+    var balls = 0
+
+    suspend fun countBalls() = beam.onTurnOn { balls++ }      // also isOn, turnedOn, awaitOn(), whileOn { }
+}
+```
+
+`intake.beam.onWhenLow` and `intake.beam.debounce` (a change counts only once it lasted that long) are config
+settings. Digital inputs come with the hub's bulk read: the first one read in a loop costs one bulk read of its hub.
+
 With `velocityControl`, a motor whose encoder doesn't move for half a second under power is stopped, and the Driver
 Station says why: without an encoder signal the hub would run it up to full power.
 

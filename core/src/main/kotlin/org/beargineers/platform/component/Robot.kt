@@ -3,6 +3,7 @@ package org.beargineers.platform.component
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import org.beargineers.platform.config.Config
+import org.beargineers.platform.input.Button
 import org.beargineers.platform.input.RemoteCommands
 import org.beargineers.platform.runtime.LoopRuntime
 import org.beargineers.platform.telemetry.RobotTelemetry
@@ -77,6 +78,12 @@ class RobotRunner(timeSource: TimeSource = TimeSource.Monotonic, log: (String) -
     internal fun readEveryTick(input: () -> Unit) {
         inputs += input
     }
+
+    /**
+     * A button read at the start of every loop, with the gamepads, so everything in a loop sees the same state: for a
+     * digital sensor like a limit switch or a beam break. [isDown] reads it.
+     */
+    fun button(isDown: () -> Boolean): Button = Button(runtime, isDown).also { button -> readEveryTick { button.read() } }
 
     internal fun attach(robot: Robot) {
         check(this.robot == null) { "An opmode can only have one robot" }

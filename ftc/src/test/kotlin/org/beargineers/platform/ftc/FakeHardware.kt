@@ -4,6 +4,7 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode
 import com.qualcomm.robotcore.hardware.DcMotor
 import com.qualcomm.robotcore.hardware.DcMotorEx
 import com.qualcomm.robotcore.hardware.DcMotorSimple
+import com.qualcomm.robotcore.hardware.DigitalChannel
 import com.qualcomm.robotcore.hardware.HardwareMap
 import com.qualcomm.robotcore.hardware.PwmControl
 import com.qualcomm.robotcore.hardware.Servo
@@ -88,6 +89,21 @@ class FakeServo {
             "getPosition" -> position
             "setDirection" -> direction = args[0] as Servo.Direction
             "getDirection" -> direction
+            else -> Unanswered
+        }
+    }
+}
+
+class FakeDigitalChannel {
+    /** The line: true is high */
+    var state = true
+    var mode = DigitalChannel.Mode.OUTPUT
+
+    val device: DigitalChannel = fake { method, args ->
+        when (method) {
+            "getState" -> state
+            "setMode" -> mode = args[0] as DigitalChannel.Mode
+            "getMode" -> mode
             else -> Unanswered
         }
     }

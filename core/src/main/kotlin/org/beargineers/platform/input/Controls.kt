@@ -39,7 +39,7 @@ abstract class Controls(host: RobotHost, val name: String) : ConfigScope {
         host.runner.readEveryTick { read() }
     }
 
-    fun button(isDown: () -> Boolean): Button = Button(this, isDown).also { buttons += it }
+    fun button(isDown: () -> Boolean): Button = Button(runtime, isDown).also { buttons += it }
 
     fun axis(value: () -> Double): Axis = Axis(this, value).also { axes += it }
 
@@ -58,7 +58,7 @@ abstract class Controls(host: RobotHost, val name: String) : ConfigScope {
  * The `on...` and [whileHeld] handlers keep running as long as the coroutine that set them up, so handlers set up
  * during init stop at START.
  */
-class Button internal constructor(private val controls: Controls, private val sensor: () -> Boolean) {
+class Button internal constructor(private val runtime: LoopRuntime, private val sensor: () -> Boolean) {
     var isDown: Boolean = false
         private set
 
@@ -75,7 +75,7 @@ class Button internal constructor(private val controls: Controls, private val se
     private var pressedAt = Duration.ZERO
 
     /** How long the button has been down; zero when it is up */
-    val heldFor: Duration get() = if (isDown) controls.runtime.elapsed - pressedAt else Duration.ZERO
+    val heldFor: Duration get() = if (isDown) runtime.elapsed - pressedAt else Duration.ZERO
 
     // Coroutines waiting for the next press or release. Woken by read(), so waiting costs nothing in loops without one.
     private val pressWaiters = ArrayList<CancellableContinuation<Unit>>()
@@ -87,7 +87,7 @@ class Button internal constructor(private val controls: Controls, private val se
         wasReleased = !down && isDown
         if (wasPressed) {
             presses++
-            pressedAt = controls.runtime.elapsed
+            pressedAt = runtime.elapsed
         }
         if (wasReleased) releases++
         isDown = down
