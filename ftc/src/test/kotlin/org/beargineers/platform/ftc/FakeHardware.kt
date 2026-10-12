@@ -5,7 +5,9 @@ import com.qualcomm.robotcore.hardware.DcMotor
 import com.qualcomm.robotcore.hardware.DcMotorEx
 import com.qualcomm.robotcore.hardware.DcMotorSimple
 import com.qualcomm.robotcore.hardware.DigitalChannel
+import com.qualcomm.robotcore.hardware.DigitalChannelController
 import com.qualcomm.robotcore.hardware.HardwareMap
+import com.qualcomm.robotcore.hardware.LED
 import com.qualcomm.robotcore.hardware.PwmControl
 import com.qualcomm.robotcore.hardware.Servo
 import org.beargineers.platform.component.RobotRunner
@@ -107,6 +109,23 @@ class FakeDigitalChannel {
             else -> Unanswered
         }
     }
+}
+
+/** A REV LED on a digital port: lit while its line is low, as the SDK's [LED] drives it */
+class FakeLed {
+    var line = true
+    var writes = 0
+    val isOn: Boolean get() = !line
+
+    val device = LED(fake<DigitalChannelController> { method, args ->
+        when (method) {
+            "setDigitalChannelState" -> {
+                line = args[1] as Boolean
+                writes++
+            }
+            else -> Unanswered
+        }
+    }, 0)
 }
 
 class FakeDistanceSensor {

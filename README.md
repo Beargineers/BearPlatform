@@ -128,6 +128,9 @@ class Flywheel(parent: Component) : Component(parent) {
 - `drive` and `localization`: the `Drivetrain` and `Localizer` components that teleop driving and path following use;
   the FTC implementations, `MecanumDrive` and `PinpointLocalizer`, are in `ftc` (below).
 
+- `indicator`: `Indicator<S>`, lights that parts of the robot show states on through signals with priorities: steady,
+  for a while, blinking or in a `Pattern`. The FTC lights, `RgbLight` and `RevLeds`, are in `ftc` (below).
+
 ### ftc
 
 ```kotlin
@@ -209,6 +212,30 @@ third of it: turn a sensor's `reading` off while nothing needs it (`shooterBall.
 `distance` is null; turned back on, the sensor is read right away and `distance` stays null until that reading.
 Turning distances into decisions is the component's job: a ball in once closer than 13 cm and out only once farther
 than 17 is `Hysteresis(on = 13.0, off = 17.0)`.
+
+Indicator lights tell the drivers what the robot is up to. Many parts of the robot have something to say, so each
+asks through a signal of its own, and the light shows the one with the highest priority (of equal ones, the last
+asked):
+
+```kotlin
+val light = RgbLight(this)                         // goBILDA's RGB light, a servo named "light"
+val leds = RevLeds(this)                           // REV's red/green LEDs led1..led3, each "<led>red" and "<led>green"
+
+val ballsSignal = light.signal(priority = 10)
+val tagSignal = light.signal(priority = 40)
+
+ballsSignal.show(if (balls == 3) RgbColor.GREEN else RgbColor.OFF)  // every loop: only a change counts
+tagSignal.blink(RgbColor.ORANGE, times = 3)                          // once: hides the balls for 1.5 s
+leds.signal().show("GG0")                                            // one letter per LED: R, G, A(mber) or 0
+leds.signal().show(Pattern("G00" to 150.milliseconds, "0G0" to 150.milliseconds, "00G" to 150.milliseconds))
+```
+
+A signal shows something until told otherwise or `clear()`ed, for a while (`show(state, lasting = 2.seconds)`),
+blinking, or in a `Pattern`, which can repeat a number of `times`. Asking again for what a signal shows already
+changes nothing, so a blink asked for every loop keeps its rhythm. Only changes go to the hub: a color of goBILDA's
+light is one servo command, and each REV LED that changes one command per color it turns on or off. Lights are off
+from INIT, and again when the opmode stops. Other lights can be indicators too: `Indicator<S>` in `core` does the
+signals and timing, and a subclass only says how to `display` a state.
 
 With `velocityControl`, a motor whose encoder doesn't move for half a second under power is stopped, and the Driver
 Station says why: without an encoder signal the hub would run it up to full power.
