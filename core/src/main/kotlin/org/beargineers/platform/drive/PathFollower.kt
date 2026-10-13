@@ -133,6 +133,40 @@ class PathFollower(
         }
     }
 
+    /**
+     * Keeps the robot at [target] until cancelled, like while shooting from a spot: whenever something pushes it
+     * further than [tolerance] or [headingTolerance] away, it drives back, and stops there. Never returns; stopping
+     * the action, or the sticks taking over, ends it.
+     */
+    suspend fun hold(target: Pose): Nothing {
+        check(drive.canStrafe) { "${drive.path} can't strafe, and PathFollower needs a drivetrain that can" }
+        drive.takeOver("hold $target") {
+            try {
+                keepAt(target)
+            } finally {
+                drive.stopMoving()
+            }
+        }
+    }
+
+    private suspend fun keepAt(target: Pose): Nothing {
+        var steering = false
+        while (true) {
+            val error = target.relativeTo(localizer.pose)
+            val outside = error.length > tolerance
+            val turnOutside = abs(error.turn) > headingTolerance
+            if (outside || turnOutside) {
+                if (!steering) resetPids()
+                steering = true
+                steer(error, 1.0, outside, turnOutside)
+            } else if (steering) {
+                steering = false
+                drive.stopMoving()
+            }
+            nextTick()
+        }
+    }
+
     private suspend fun follow(waypoints: List<Waypoint>, stopAtEnd: Boolean): Boolean {
         val start = runtime.elapsed
         var index = 0

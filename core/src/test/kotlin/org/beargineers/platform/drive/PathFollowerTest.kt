@@ -235,6 +235,29 @@ class PathFollowerTest {
     }
 
     @Test
+    fun holdsAPoseUntilStoppedDrivingBackWhenPushed() {
+        val spot = Pose(0.cm, 0.cm, 45.degrees)
+        robot.localizer.pose = spot
+        runner.start { launch { robot.follower.hold(spot) } }
+        repeat(20) { tick() }
+        assertTrue(stopped(), "already there")
+
+        robot.localizer.pose = Pose(10.cm, 0.cm, 40.degrees)
+        tick()
+        assertTrue(drive.forward != 0.0 || drive.right != 0.0, "pushed away, it drives back")
+        repeat(200) { tick() }
+        assertTrue(robot.localizer.pose.distanceTo(spot) <= 2.cm, "${robot.localizer.pose}")
+        assertTrue(abs((robot.localizer.pose.heading - spot.heading).inDegrees) <= 1.0, "${robot.localizer.pose}")
+        assertTrue(stopped())
+        assertTrue(logged.none { it.startsWith("follower:") }, "nothing to log while holding: $logged")
+        assertTrue(drive.isBusy)
+
+        drive.cancelAction()
+        tick()
+        assertTrue(!drive.isBusy)
+    }
+
+    @Test
     fun stoppingTheActionStopsTheMotors() {
         var ended: Throwable? = null
         runner.start {
