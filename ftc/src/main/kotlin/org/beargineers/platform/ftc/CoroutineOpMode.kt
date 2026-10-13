@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode
 import com.qualcomm.robotcore.eventloop.opmode.OpMode
 import com.qualcomm.robotcore.util.RobotLog
 import kotlinx.coroutines.CoroutineScope
+import org.beargineers.platform.component.Robot
 import org.beargineers.platform.component.RobotRunner
 import org.beargineers.platform.config.Config
 import kotlin.time.Duration.Companion.milliseconds
@@ -14,10 +15,13 @@ import org.beargineers.platform.config.ConfigScope
 import org.beargineers.platform.runtime.LoopRuntime
 import org.beargineers.platform.telemetry.LoopTimer
 import kotlin.time.DurationUnit
+import kotlin.properties.ReadOnlyProperty
+import kotlin.reflect.KProperty
 import kotlin.time.Duration
 
 /**
- * Base class for opmodes written with coroutines. Create the robot as a property, `val robot = GammaRobot(this)`, then:
+ * Base class for opmodes written with coroutines. Declare the robot as a property, `val robot by robot(::GammaRobot)`,
+ * or `by robot(DecodeRobots)` for an opmode several robots share (see [robot] and [RobotChoice]), then:
  * - [onInit] runs from INIT until START, e.g. for menus or picking the starting pose. START cancels it.
  * - [onStart] runs from START until the opmode ends.
  * - [onStop] runs at the very end, after all coroutines and components have stopped.
@@ -48,6 +52,30 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
     final override val batteryVoltage: Double? get() = battery.voltage
 
     final override val deviceReader = DeviceReader()
+
+    final override val robotConfiguration: String? get() = activeRobotConfiguration()
+
+    private val robotsToCreate = mutableListOf<RobotAtInit<*>>()
+
+    /**
+     * The opmode's robot, created at INIT: `val robot by robot(::GammaRobot)`, or `val robot by robot(DecodeRobots)` for
+     * whichever robot the robot configuration picked on the Driver Station is (see [RobotChoice]). Created then rather
+     * than with the opmode, a robot that can't be created fails INIT with the reason on the Driver Station. Use it from
+     * [onInit] and [onStart] on.
+     */
+    protected fun <R : Robot> robot(create: (FtcHost) -> R): ReadOnlyProperty<CoroutineOpMode, R> =
+        RobotAtInit(create).also { robotsToCreate += it }
+
+    private inner class RobotAtInit<R : Robot>(private val create: (FtcHost) -> R) : ReadOnlyProperty<CoroutineOpMode, R> {
+        private var robot: R? = null
+
+        fun create() {
+            robot = create(this@CoroutineOpMode)
+        }
+
+        override fun getValue(thisRef: CoroutineOpMode, property: KProperty<*>): R = robot
+            ?: error("${property.name} is created at INIT: use it from onInit or onStart on, not while the opmode is created")
+    }
 
     private val loopTimer = LoopTimer(runner.telemetry)
 
@@ -89,6 +117,7 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
         LiveTelemetry.running = true
 
         try {
+            for (robot in robotsToCreate) robot.create()
             // Fails INIT, listing every value that can't be read, rather than failing in the middle of a match
             RobotConfig.onRobot(hardwareMap.appContext).loadForOpMode()
             val configProblems = Config.problems().map { "Config: $it" }

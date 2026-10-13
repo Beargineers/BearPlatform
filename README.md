@@ -96,6 +96,26 @@ camera.forward = 4.5in
   `Config.load()` rejects text with unreadable values and keeps the old ones, and `Config.problems()` lists keys
   nothing uses, with "did you mean" hints for typos.
 
+  One text can serve several robots. Settings before the first section are every robot's; a section is one robot's,
+  named by its robot configuration (picked on the Driver Station), and overrides every robot's values:
+
+```properties
+# Every robot's: the field, autonomous waypoints
+AutoPositions.NORTH_START = F6BL:135
+
+[betaDecode, betaPractice]
+follower.forwardGains = 0.010, 0.002, 0.004
+
+[gammaDecode]
+follower.forwardGains = 0.026, 0.002, 0.003
+
+[*]
+# every robot's again
+```
+
+  Only every robot's settings and the active robot's sections are checked and used; other robots' sections are left
+  alone, so Gamma's settings are never "unused" on Beta.
+
 - `input`: buttons, triggers and sticks read once per loop, so all code in a loop sees the same presses. Button
   handlers are coroutines that live as long as the coroutine that set them up.
 
@@ -136,7 +156,7 @@ class Flywheel(parent: Component) : Component(parent) {
 ```kotlin
 @TeleOp
 class Driving : CoroutineOpMode() {
-    val robot = GammaRobot(this)
+    val robot by robot(::GammaRobot)                    // created at INIT
 
     override suspend fun CoroutineScope.onInit() { /* from INIT until START: menus, starting pose */ }
 
@@ -153,6 +173,29 @@ class Driving : CoroutineOpMode() {
     }
 }
 ```
+
+The robot is created at INIT, not with the opmode: a robot that can't be created fails INIT with the reason on the
+Driver Station. Use it from `onInit` and `onStart` on.
+
+One app can serve several robots, and opmodes shared between them create whichever robot this one is, by the robot
+configuration picked on the Driver Station:
+
+```kotlin
+object DecodeRobots : RobotChoice<DecodeRobot>(
+    "betaDecode" to ::BetaRobot,
+    "gammaDecode" to ::GammaRobot,
+)
+
+class Driving : CoroutineOpMode() {
+    val robot by robot(DecodeRobots)                     // Beta on betaDecode, Gamma on gammaDecode
+}
+class TurretTuning : CoroutineOpMode() {
+    val robot by robot(DecodeRobots.only<GammaRobot>())  // fails INIT on Beta, saying so
+}
+```
+
+A configuration the app has no robot for fails INIT, listing the ones it knows. The config follows the same name:
+each robot gets every robot's settings and its own section's (see `config` above).
 
 Every loop, `CoroutineOpMode` reads the gamepads and all hub sensors (in one bulk read), updates the robot's
 components, runs coroutines and sends telemetry. A loop that takes less than `loop.minTime` (5 ms) sleeps for the rest:
@@ -390,12 +433,15 @@ on the Control Hub.
 
 #### Config on the robot
 
-The app's config is `res/raw/config.properties` of the season app module. Every opmode loads it at INIT and checks
-it against the settings its robot declares: a value that can't be read fails INIT with a list of all such values,
-and other problems (like keys nothing uses) show on the Driver Station until START.
+The app's config is `res/raw/config.properties` of the season app module, with a section for each robot the app
+serves. Every opmode loads it at INIT, for the robot configuration picked on the Driver Station, and checks it against
+the settings its robot declares: a value that can't be read fails INIT with a list of all such values, and other
+problems (like keys nothing uses) show on the Driver Station until START. A key that only other opmodes of the app
+use shows up as unused too, since an opmode only knows its own robot's settings.
 
 With the laptop on the robot's WiFi, `http://192.168.43.1:8080/bear/config` shows the config with every setting the
-robot has, their defaults, and problems like typos in keys. Edits saved there take effect right away, even in a
+robot has, their defaults, which robot configuration's sections apply, which section each value comes from, and
+problems like typos in keys. Edits saved there take effect right away, even in a
 running opmode, and stay on the robot until the next install; the page's *Download* link gets the edited file for
 copying into the project. The page is served by the Control Hub's own web server, so it works with no opmode running.
 
@@ -453,7 +499,9 @@ a warning at INIT below `battery.low` (12 V by default), and the lowest reading 
    1. ~~drivetrain: `Drivetrain`, `MecanumDrive`, teleop driving~~
    2. ~~localization: Pinpoint odometry, field-centric driving~~
    3. ~~path following: `PathFollower`, PID to point~~
-9. Port a real robot onto the platform
+9. Port the real robots onto the platform
+   1. ~~one app for several robots: `RobotChoice` by robot configuration, robots created at INIT, config sections~~
+   2. the DECODE season: its robot contract and shared opmodes, with Beta first, then Gamma
 
 ## Build
 

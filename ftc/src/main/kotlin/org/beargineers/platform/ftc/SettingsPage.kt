@@ -53,12 +53,19 @@ internal object SettingsPage {
             """<p class="muted">App installed ${installedAgo(it)}.</p>"""
         } ?: ""
 
+        val robotHtml = config.activeRobot?.let {
+            """<p>Robot configuration <b>${escape(it)}</b>: its sections of the config apply, after every robot's settings.</p>"""
+        } ?: ""
+
         val settingsHtml = if (declarations.isEmpty()) "" else buildString {
             append("<h2>Settings</h2><div class=\"scroll\"><table><tr><th>Key</th><th>Type</th><th>Default</th><th>In config</th></tr>")
             for (declaration in declarations) {
                 val default = declaration.defaultText?.let { "<code>${escape(it)}</code>" }
                     ?: if (declaration.isRequired) "<span class=\"warn\">required</span>" else "<span class=\"muted\">optional</span>"
-                val value = Config.valueText(declaration.key)?.let { "<code>${escape(it)}</code>" } ?: ""
+                val value = Config.valueText(declaration.key)?.let { text ->
+                    val section = Config.valueSection(declaration.key)?.let { " <span class=\"muted\">${escape(it)}</span>" } ?: ""
+                    "<code>${escape(text)}</code>$section"
+                } ?: ""
                 append("<tr><td><code>${escape(declaration.key)}</code></td><td>${escape(declaration.type.name)}</td>")
                 append("<td>$default</td><td>$value</td></tr>")
             }
@@ -82,6 +89,7 @@ internal object SettingsPage {
             |<h1>Robot config</h1>
             |<p class="muted">Using the config $source.
             |  <a href="$RAW_PATH" download="config.properties">Download it</a> to copy edits into the project.</p>
+            |$robotHtml
             |$outcomeHtml
             |$problemsHtml
             |<form method="post" action="$PATH">

@@ -127,6 +127,22 @@ class RobotConfigTest {
         assertEquals(0.5, arm.power)
         assertFalse(config.isEdited)
     }
+
+    @Test
+    fun theActiveRobotConfigurationsSectionsApply() {
+        val arm = Arm()
+        var active: String? = "betaDecode"
+        val config = RobotConfig(files) { active }
+        bundled = "Arm.power = 0.6\n[betaDecode]\nArm.power = 0.7\n[gammaDecode]\nArm.power = 0.8"
+        config.loadForOpMode()
+        assertEquals(0.7, arm.power)
+        active = "gammaDecode"
+        config.edit(bundled.replace("0.8", "0.85"))
+        assertEquals(0.85, arm.power, "edits too")
+        active = null
+        config.loadForOpMode()
+        assertEquals(0.6, arm.power)
+    }
 }
 
 class SettingsPageTest {
@@ -167,6 +183,17 @@ class SettingsPageTest {
         val html = SettingsPage.html(config)
         assertTrue("<td><code>Arm.power</code></td><td>number</td><td><code>0.5</code></td>" in html, html)
         assertTrue("Arm.Power is set but nothing uses it. Did you mean Arm.power?" in html, html)
+    }
+
+    @Test
+    fun showsTheRobotConfigurationAndWhereValuesComeFrom() {
+        Arm()
+        val config = RobotConfig(ConfigFiles(directory, "1") { bundled }) { "betaDecode" }
+        bundled = "Arm.power = 0.6\n[betaDecode]\nArm.power = 0.7"
+        config.loadForOpMode()
+        val html = SettingsPage.html(config)
+        assertTrue("Robot configuration <b>betaDecode</b>" in html, html)
+        assertTrue("<code>0.7</code> <span class=\"muted\">[betaDecode]</span>" in html, html)
     }
 
     @Test

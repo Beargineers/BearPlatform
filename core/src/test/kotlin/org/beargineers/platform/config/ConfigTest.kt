@@ -62,6 +62,15 @@ private class ArmWithAngle(override val configScope: String) : ConfigScope {
     val power by config(90.degrees)
 }
 
+private class Field2 {
+    val goal by config(Point(0.cm, 0.cm))
+    val wait by config(1.0)
+}
+
+private class Drive {
+    val gain by config(0.01)
+}
+
 private class Mount {
     val offset by optionalConfig<Distance>()
     val tilt by optionalConfig(5.degrees)
@@ -243,5 +252,61 @@ class ConfigTest {
         assertEquals("10cm", declaration.defaultText)
         assertEquals("distance", declaration.type.name)
         assertEquals(Distance::class.java.simpleName, "Distance")
+    }
+
+    private val twoRobots = """
+        # Every robot's
+        Field2.goal = -174, 158
+        Field2.wait = 2
+        Drive.gain = 0.02
+
+        [betaDecode, betaPractice]
+        Drive.gain = 0.01
+
+        [gammaDecode]
+        Drive.gain = 0.026
+        Field2.goal = -166, 148
+
+        [*]
+        Field2.wait = 3
+    """.trimIndent()
+
+    @Test
+    fun eachRobotHasEveryRobotsSettingsAndItsOwn() {
+        val field = Field2()
+        val drive = Drive()
+        Config.load(twoRobots, robotConfiguration = "betaDecode")
+        assertEquals(0.01, drive.gain)
+        assertEquals(Point((-174).cm, 158.cm), field.goal)
+        assertEquals(3.0, field.wait, "every robot's again after [*]")
+        assertEquals("[betaDecode, betaPractice]", Config.valueSection("Drive.gain"))
+        assertNull(Config.valueSection("Field2.goal"), "every robot's")
+        assertEquals("betaDecode", Config.robotConfiguration)
+
+        Config.load(twoRobots, robotConfiguration = "gammaDecode")
+        assertEquals(0.026, drive.gain)
+        assertEquals(Point((-166).cm, 148.cm), field.goal)
+        assertEquals("[gammaDecode]", Config.valueSection("Field2.goal"))
+
+        Config.load(twoRobots, robotConfiguration = "betaPractice")
+        assertEquals(0.01, drive.gain)
+
+        Config.load(twoRobots)
+        assertEquals(0.02, drive.gain, "no robot configuration: every robot's only")
+        assertEquals(twoRobots, Config.text, "the whole text, for editing")
+    }
+
+    @Test
+    fun otherRobotsSettingsArentCheckedOrUnused() {
+        Field2()
+        Drive()
+        Config.load(twoRobots + "\n[gammaDecode]\nTurret.speed = fast", robotConfiguration = "betaDecode")
+        val problems = Config.problems()
+        assertTrue(problems.none { "nothing uses" in it }, "Gamma's settings aren't Beta's problem: $problems")
+
+        val thrown = assertFailsWith<ConfigException> { Config.load("[ ]\nDrive.gain = 1") }
+        assertTrue("names no robot configuration" in thrown.message!!, thrown.message)
+        assertFailsWith<ConfigException> { Config.load("[betaDecode]\nDrive.gain = fast", "betaDecode") }
+        Config.load("[gammaDecode]\nDrive.gain = fast", "betaDecode")
     }
 }

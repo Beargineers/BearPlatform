@@ -1,6 +1,7 @@
 package org.beargineers.platform.ftc
 
 import android.content.Context
+import com.qualcomm.ftccommon.configuration.RobotConfigFileManager
 import org.beargineers.platform.config.Config
 import org.beargineers.platform.config.ConfigException
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil
@@ -9,17 +10,24 @@ import java.io.File
 /**
  * The robot's config: loads the text from [files] into [Config], and keeps edits made on the robot.
  * The opmodes and the settings web page share one instance, [onRobot].
+ *
+ * One app can serve several robots: the text's sections for the active robot configuration apply (see [Config]).
  */
 class RobotConfig(
     private val files: ConfigFiles,
     /** When the app was installed, in milliseconds since the epoch, if known */
     val appInstalledAt: Long? = null,
+    /** The name of the robot configuration picked on the Driver Station, asked for at every load */
+    private val robotConfiguration: () -> String? = { null },
 ) {
     private var loaded = false
 
     /** The config text in effect, or the one that will be once an opmode starts */
     val text: String
         @Synchronized get() = if (loaded) Config.text else files.read()
+
+    /** The robot configuration whose sections of the config apply: the one picked on the Driver Station */
+    val activeRobot: String? get() = robotConfiguration()
 
     /** Whether the config was edited on the robot since this build was installed */
     val isEdited: Boolean get() = files.hasEdits
@@ -30,7 +38,7 @@ class RobotConfig(
      */
     @Synchronized
     fun loadForOpMode() {
-        Config.load(text)
+        Config.load(text, robotConfiguration())
         loaded = true
     }
 
@@ -49,11 +57,12 @@ class RobotConfig(
     // Loading checks the values; storing comes after it, and a failure there takes the loaded values back
     private fun applyAndStore(newText: String, store: () -> Unit) {
         val previous = Config.text
-        Config.load(newText)
+        val robot = robotConfiguration()
+        Config.load(newText, robot)
         try {
             store()
         } catch (e: Exception) {
-            runCatching { Config.load(previous) }
+            runCatching { Config.load(previous, robot) }
             throw e
         }
         loaded = true
@@ -74,7 +83,7 @@ class RobotConfig(
                 val files = ConfigFiles(File(AppUtil.ROBOT_SETTINGS, "BearPlatformConfig"), installedAt.toString()) {
                     bundled(context)
                 }
-                RobotConfig(files, installedAt)
+                RobotConfig(files, installedAt) { activeRobotConfiguration() }
             }.also { onRobot = it }
         }
 
@@ -85,3 +94,7 @@ class RobotConfig(
         }
     }
 }
+
+/** The name of the robot configuration picked on the Driver Station; null where there is none, like in tests */
+internal fun activeRobotConfiguration(): String? =
+    runCatching { RobotConfigFileManager().activeConfig.name }.getOrNull()?.takeIf { it.isNotBlank() }

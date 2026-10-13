@@ -46,6 +46,8 @@ class TestFtcHost(hardwareAvailable: Boolean = true) : FtcHost {
     override val batteryVoltage: Double? get() = voltage
     var reader: DeviceReader? = null
     override val deviceReader: DeviceReader? get() = reader
+    var configuration: String? = null
+    override val robotConfiguration: String? get() = configuration
     override val opMode: OpMode = object : OpMode() {
         override fun init() {}
         override fun loop() {}

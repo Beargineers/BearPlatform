@@ -19,13 +19,24 @@ import kotlin.reflect.KClass
  * Everything that declares the same key shares one setting, e.g. two instances of the same class. Declaring a key
  * again with a different type or default fails, since that means two different settings collide.
  *
- * The text uses the Java properties format: `key = value` lines and `#` comments.
+ * The text uses the Java properties format: `key = value` lines and `#` comments. One text can serve several robots,
+ * with sections for each: settings before the first section are every robot's, and a line like `[betaDecode]` starts
+ * settings only for the robot whose robot configuration (picked on the Driver Station) is named so. A section can name
+ * several configurations, `[betaDecode, betaPractice]`, and `[*]` goes back to every robot's settings. A robot's own
+ * value for a key overrides the value every robot has.
  */
 object Config {
-    internal class Snapshot(val text: String, val values: Map<String, String>, val version: Int)
+    internal class Snapshot(
+        val text: String,
+        val values: Map<String, String>,
+        /** For values from a robot's section, the section's names as written; values every robot shares have none */
+        val sections: Map<String, String>,
+        val robotConfiguration: String?,
+        val version: Int,
+    )
 
     @Volatile
-    internal var snapshot = Snapshot("", emptyMap(), 0)
+    internal var snapshot = Snapshot("", emptyMap(), emptyMap(), null, 0)
         private set
 
     private val declarations = ConcurrentHashMap<String, Declaration<*>>()
@@ -41,17 +52,30 @@ object Config {
     /** The config text in effect */
     val text: String get() = snapshot.text
 
+    /** The name of the robot configuration whose sections of the text are in effect, if any */
+    val robotConfiguration: String? get() = snapshot.robotConfiguration
+
     /**
-     * Replaces all values with the ones from [text].
+     * Replaces all values with the ones from [text]: those every robot shares, and those of [robotConfiguration]'s
+     * sections (see [Config]).
      *
      * If a value in [text] can't be read for a declared setting, nothing changes and [ConfigException] lists every such value.
      */
     @Synchronized
-    fun load(text: String) {
-        val values = parseProperties(text)
+    fun load(text: String, robotConfiguration: String? = null) {
+        val values = mutableMapOf<String, String>()
+        val sections = mutableMapOf<String, String>()
+        for (part in sectionsOf(text)) {
+            if (part.names != null && robotConfiguration !in part.names) continue
+            val partValues = parseProperties(part.text)
+            values += partValues
+            for (key in partValues.keys) {
+                if (part.label == null) sections -= key else sections[key] = part.label
+            }
+        }
         val invalid = declarations.values.mapNotNull { declaration -> values[declaration.key]?.let(declaration::check) }
         if (invalid.isNotEmpty()) throw ConfigException(invalid)
-        snapshot = Snapshot(text, values, snapshot.version + 1)
+        snapshot = Snapshot(text, values, sections, robotConfiguration, snapshot.version + 1)
     }
 
     /** Settings declared by the code created so far, sorted by key */
@@ -59,6 +83,9 @@ object Config {
 
     /** The value [key] has in the config text, as written there, or null if the text doesn't set it */
     fun valueText(key: String): String? = snapshot.values[key]
+
+    /** The section [key]'s value comes from, like `[betaDecode]`; null for a value every robot shares, or none */
+    fun valueSection(key: String): String? = snapshot.sections[key]
 
     /**
      * Human-readable problems with the current config: values that can't be read, required settings without a value,
@@ -175,6 +202,36 @@ object Config {
             previous = current
         }
         return previous[b.length]
+    }
+
+    /** A part of the text: every robot's settings ([names] null), or a section's */
+    private class Part(val names: Set<String>?, val label: String?, val text: String)
+
+    private val sectionHeader = Regex("""^\s*\[(.*)]\s*$""")
+
+    private fun sectionsOf(text: String): List<Part> {
+        val parts = mutableListOf<Part>()
+        var names: Set<String>? = null
+        var label: String? = null
+        val lines = StringBuilder()
+        fun finish() {
+            if (lines.isNotBlank()) parts += Part(names, label, lines.toString())
+            lines.clear()
+        }
+        for (line in text.lineSequence()) {
+            val header = sectionHeader.matchEntire(line)
+            if (header == null) {
+                lines.append(line).append('\n')
+                continue
+            }
+            finish()
+            val listed = header.groupValues[1].split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            if (listed.isEmpty()) throw ConfigException(listOf("Section ${line.trim()} names no robot configuration; [*] is every robot's"))
+            names = if (listed == listOf("*")) null else listed.toSet()
+            label = if (names == null) null else "[${listed.joinToString(", ")}]"
+        }
+        finish()
+        return parts
     }
 
     private fun parseProperties(text: String): Map<String, String> {

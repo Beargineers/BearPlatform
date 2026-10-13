@@ -16,6 +16,9 @@ interface FtcHost : RobotHost {
 
     /** Reads slow devices, like I2C sensors, on a thread of its own; null where devices are read in the loop */
     val deviceReader: DeviceReader? get() = null
+
+    /** The name of the robot configuration picked on the Driver Station; null where there is none */
+    val robotConfiguration: String? get() = null
 }
 
 /** The devices from the robot configuration. Available from [init][Component] on, not in constructors. */
