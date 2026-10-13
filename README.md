@@ -185,8 +185,10 @@ class Shooter(parent: Component) : Component(parent) {
 }
 ```
 
-`pwmMin` and `pwmMax` set a servo's pulse widths for devices that need other ones than the SDK's, like goBILDA's RGB
-light (500 and 2500).
+`pwmMin` and `pwmMax` set a servo's pulse widths for devices that need other ones than the SDK's, like many
+continuous rotation servos (500 and 2500). A `CRServo` turns at a `power` instead of to a position; like a motor's,
+its power is only sent when it differs from what the hub has by at least `powerTolerance` (0.005), and it stops with
+the opmode.
 
 Digital sensors, like limit switches, touch sensors and beam breaks, work like gamepad buttons, and are read with
 the gamepads at the start of every loop:
@@ -203,8 +205,14 @@ class Intake(parent: Component) : Component(parent) {
 `intake.beam.onWhenLow` and `intake.beam.debounce` (a change counts only once it lasted that long) are config
 settings. Digital inputs come with the hub's bulk read: the first one read in a loop costs one bulk read of its hub.
 
-A `DistanceSensor` (REV's 2m sensor, or the distance of REV's color sensor) is read on the device reader's thread
-every `readInterval` (50 ms), and the loop takes the newest reading at its start: `ball.distance` is a `Distance`,
+An `AnalogInput`, like a potentiometer or an absolute encoder, gives its `voltage` and its `fraction` of the most
+the hub measures (3.3 V). Analog inputs come with the hub's bulk read, like digital ones and motor encoders, which is
+taken again every loop, but only when something reads it: an input nothing reads costs nothing.
+
+I2C sensors are slow to read: they are `BackgroundSensor`s, read on the device reader's thread every `readInterval`,
+while the loop takes the newest reading at its start, never waiting.
+
+A `DistanceSensor` (REV's 2m sensor) is read every `readInterval` (50 ms): `ball.distance` is a `Distance`,
 or null when nothing is within `maxRange` (200 cm) or the sensor doesn't answer. REV's 2m sensor measures about every
 33 ms, and a read waits for a new measurement, asking the sensor over I2C again and again: a shorter interval only keeps
 the hubs' connection busy. Each read holds the connection for about 9 ms, so two sensors read every 50 ms take a
@@ -212,6 +220,25 @@ third of it: turn a sensor's `reading` off while nothing needs it (`shooterBall.
 `distance` is null; turned back on, the sensor is read right away and `distance` stays null until that reading.
 Turning distances into decisions is the component's job: a ball in once closer than 13 cm and out only once farther
 than 17 is `Hysteresis(on = 13.0, off = 17.0)`.
+
+A `ColorSensor` (REV's Color Sensor V3, or any the SDK sees as a `NormalizedColorSensor`) is read every `readInterval`
+(50 ms), and REV's sensor is told to measure every 25 ms instead of 100, so a reading is never much older than its
+read. `sample.color` is an `Rgb` of channels from 0 to 1 with `hue` (degrees: red 0, green 120, blue 240),
+`saturation` and `value`. What a sensor sees is dim, so tell colors apart by hue and saturation, which don't depend on
+the light. On Beta, DECODE's artifacts held on the sensor were:
+
+| | hue | saturation | value | distance |
+|---|---|---|---|---|
+| green artifact | 162° | 0.73 | 0.05–0.08 | 0.6 cm |
+| purple artifact | 230° | 0.48 | 0.04–0.05 | 0.7–1 cm |
+| nothing | ~174° (noise) | ~0.46 (noise) | 0.001 | 5–7 cm (robot parts) |
+
+So check that something is there first, then its hue: `color.value > 0.01 && color.hue in 210.0..250.0` for purple.
+REV's sensor lights what it sees with its own LED: 6 cm away, an artifact barely changed the reading. With
+`readDistance`, each read also takes the sensor's distance, good for telling whether something is in front of it
+(`distance` is null from `maxRange`, 15 cm, the sensor's answer for nothing). On Beta's Expansion Hub a color read
+took 11 ms, and 16 ms with the distance: read every 50 ms, a fifth to a third of the time. Color sensors have
+`reading` too.
 
 Indicator lights tell the drivers what the robot is up to. Many parts of the robot have something to say, so each
 asks through a signal of its own, and the light shows the one with the highest priority (of equal ones, the last
@@ -341,6 +368,9 @@ and `heading error deg` graphs, next to the powers they turn into; the log says 
 Every command to the hubs, a motor power, a servo position, a bulk read or a step of an I2C read, holds the hubs' one
 connection until the hub answers, about 1.4 ms, and there is one connection for the Control Hub and an Expansion Hub
 together. That, not the code, is what makes loops slow: a motor write costs about 1.6 ms, a Pinpoint read about 5.5 ms.
+An Expansion Hub is reached through the Control Hub, over RS485, and costs more: on Beta, a servo write to it took
+5.5 ms, and its I2C reads took nearly twice as long as the Control Hub's. Put the devices written or read most often
+on the Control Hub.
 
 - Motors are only sent a power that differs from what the hub has by at least `<motor>.powerTolerance` (0.005), so a
   PID nudging the power every loop doesn't write every loop. Stopping and full power are always sent exactly.
@@ -413,7 +443,8 @@ a warning at INIT below `battery.low` (12 V by default), and the lowest reading 
 3. ~~`core`: config (typed delegates, scoped keys, units in values)~~
 4. ~~`Component` tree (`core`) and `CoroutineOpMode` (`ftc`)~~
 5. `ftc`
-   1. ~~hardware: `Motor` and `PositionServo` with units and config settings, `hardware<T>()` for other devices~~
+   1. ~~hardware: `Motor`, `PositionServo` and `CRServo` with units and config settings; `DigitalInput`,
+      `AnalogInput`, `DistanceSensor` and `ColorSensor`; indicator lights; `hardware<T>()` for other devices~~
    2. ~~gamepad input: `driver1`, `driver2` with buttons, triggers and sticks~~
    3. ~~config files on the robot and the settings web page~~
 6. ~~`core`: control (PID, feedforward, debouncer, hysteresis, slew rate)~~

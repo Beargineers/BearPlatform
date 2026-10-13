@@ -1,6 +1,10 @@
 package org.beargineers.platform.ftc
 
+import com.qualcomm.hardware.broadcom.BroadcomColorSensor
 import com.qualcomm.robotcore.eventloop.opmode.OpMode
+import com.qualcomm.robotcore.hardware.AnalogInput
+import com.qualcomm.robotcore.hardware.AnalogInputController
+import com.qualcomm.robotcore.hardware.CRServo
 import com.qualcomm.robotcore.hardware.DcMotor
 import com.qualcomm.robotcore.hardware.DcMotorEx
 import com.qualcomm.robotcore.hardware.DcMotorSimple
@@ -8,6 +12,8 @@ import com.qualcomm.robotcore.hardware.DigitalChannel
 import com.qualcomm.robotcore.hardware.DigitalChannelController
 import com.qualcomm.robotcore.hardware.HardwareMap
 import com.qualcomm.robotcore.hardware.LED
+import com.qualcomm.robotcore.hardware.NormalizedColorSensor
+import com.qualcomm.robotcore.hardware.NormalizedRGBA
 import com.qualcomm.robotcore.hardware.PwmControl
 import com.qualcomm.robotcore.hardware.Servo
 import org.beargineers.platform.component.RobotRunner
@@ -139,6 +145,80 @@ class FakeDistanceSensor {
                 reads++
                 cm
             }
+            else -> Unanswered
+        }
+    }
+}
+
+/** REV's Color Sensor V3, as the SDK offers it: a Broadcom color sensor that measures distance too */
+class FakeColorSensor {
+    var red = 0.0f
+    var green = 0.0f
+    var blue = 0.0f
+    var cm = 15.24
+    var colorReads = 0
+    var distanceReads = 0
+    var parameters: BroadcomColorSensor.Parameters = BroadcomColorSensor.Parameters.createForAPDS9151()
+
+    val device: NormalizedColorSensor = fakeOf(
+        BroadcomColorSensor::class.java, com.qualcomm.robotcore.hardware.DistanceSensor::class.java,
+    ) { method, args ->
+        when (method) {
+            "getNormalizedColors" -> {
+                colorReads++
+                NormalizedRGBA().also {
+                    it.red = red
+                    it.green = green
+                    it.blue = blue
+                }
+            }
+            "getDistance" -> {
+                distanceReads++
+                cm
+            }
+            "getParameters" -> parameters
+            "initialize" -> {
+                parameters = args[0] as BroadcomColorSensor.Parameters
+                true
+            }
+            else -> Unanswered
+        }
+    }
+}
+
+class FakeAnalogInput {
+    var voltage = 0.0
+    var reads = 0
+
+    val device = AnalogInput(fake<AnalogInputController> { method, _ ->
+        when (method) {
+            "getAnalogInputVoltage" -> {
+                reads++
+                voltage
+            }
+            "getMaxAnalogInputVoltage" -> 3.3
+            else -> Unanswered
+        }
+    }, 0)
+}
+
+class FakeCRServo {
+    var power = 0.0
+    var powerWrites = 0
+    var direction = DcMotorSimple.Direction.FORWARD
+    var pwmRange = PwmControl.PwmRange.defaultRange
+
+    val device: CRServo = fakeOf(CRServo::class.java, PwmControl::class.java) { method, args ->
+        when (method) {
+            "setPower" -> {
+                power = args[0] as Double
+                powerWrites++
+            }
+            "getPower" -> power
+            "setDirection" -> direction = args[0] as DcMotorSimple.Direction
+            "getDirection" -> direction
+            "setPwmRange" -> pwmRange = args[0] as PwmControl.PwmRange
+            "getPwmRange" -> pwmRange
             else -> Unanswered
         }
     }

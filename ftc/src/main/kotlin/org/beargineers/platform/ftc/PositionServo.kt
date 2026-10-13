@@ -1,6 +1,5 @@
 package org.beargineers.platform.ftc
 
-import com.qualcomm.robotcore.hardware.PwmControl
 import com.qualcomm.robotcore.hardware.Servo
 import com.qualcomm.robotcore.hardware.Servo.Direction
 import org.beargineers.platform.component.Component
@@ -36,8 +35,7 @@ class PositionServo(
     val device: Servo by hardware(device)
 
     private var appliedDirection: Direction? = null
-    private var appliedPwmMin: Double? = null
-    private var appliedPwmMax: Double? = null
+    private val pwmRange = PwmRangeSetting()
 
     /**
      * Position from 0.0 to 1.0. Values outside are clamped. The servo holds still until the first position is set,
@@ -65,15 +63,6 @@ class PositionServo(
             device.direction = direction
             appliedDirection = direction
         }
-        val min = pwmMin
-        val max = pwmMax
-        if (min != appliedPwmMin || max != appliedPwmMax) {
-            (device as? PwmControl)?.let { pwm ->
-                val default = PwmControl.PwmRange.defaultRange
-                pwm.pwmRange = PwmControl.PwmRange(min ?: default.usPulseLower, max ?: default.usPulseUpper)
-            }
-            appliedPwmMin = min
-            appliedPwmMax = max
-        }
+        pwmRange.apply(device, pwmMin, pwmMax)
     }
 }
