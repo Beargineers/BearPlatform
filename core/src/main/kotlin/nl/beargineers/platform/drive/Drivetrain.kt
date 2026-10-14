@@ -33,7 +33,7 @@ abstract class Drivetrain(parent: Component, name: String) : Component(parent, n
 
     /**
      * Teleop driving, called every loop: [move] drives forward and sideways, and [turn] turns, clockwise when pushed
-     * right. `drive.driveWith(driver1.leftStick, driver1.rightStick.x)`
+     * right. `drive.driveWith(controller1.leftStick, controller1.rightStick.x)`
      *
      * While an action drives, like driving to a target, the sticks leave it alone until one is pushed further than
      * [takeOverAbove]: then the action stops and the sticks drive. A thumb resting on a stick doesn't stop it.

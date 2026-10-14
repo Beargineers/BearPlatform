@@ -40,11 +40,11 @@ abstract class CoroutineOpMode : LinearOpMode(), FtcHost {
 
     val runtime: LoopRuntime get() = runner.runtime
 
-    /** Gamepad 1, read once per loop. Its config settings, like the deadband, start with `driver1.` */
-    val driver1 = Controller(this, "driver1") { gamepad1 }
+    /** Gamepad 1, read once per loop. Its config settings, like the deadband, start with `controller1.` */
+    val controller1 = Controller(this, "controller1") { gamepad1 }
 
-    /** Gamepad 2, read once per loop. Its config settings, like the deadband, start with `driver2.` */
-    val driver2 = Controller(this, "driver2") { gamepad2 }
+    /** Gamepad 2, read once per loop. Its config settings, like the deadband, start with `controller2.` */
+    val controller2 = Controller(this, "controller2") { gamepad2 }
 
     /** The battery, read through the hubs a few times a second */
     val battery = BatteryMonitor({ hardwareMap.voltageSensor.toList() }, runner.telemetry)

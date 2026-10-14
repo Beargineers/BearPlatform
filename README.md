@@ -166,13 +166,13 @@ class Driving : CoroutineOpMode() {
     override suspend fun CoroutineScope.onInit() { /* from INIT until START: menus, starting pose */ }
 
     override suspend fun CoroutineScope.onStart() {
-        driver1.rightBumper.onPress { robot.goShoot() }        // pressing again starts it over
-        driver1.a.onTap { robot.intake.toggle() }
-        driver1.a.whileHeld(after = 300.milliseconds) { robot.intake.reverse() }  // cancelled on release
-        driver2.rightTrigger.asButton(threshold = 0.1).onPress { robot.shootNow() }
+        controller1.rightBumper.onPress { robot.goShoot() }        // pressing again starts it over
+        controller1.a.onTap { robot.intake.toggle() }
+        controller1.a.whileHeld(after = 300.milliseconds) { robot.intake.reverse() }  // cancelled on release
+        controller2.rightTrigger.asButton(threshold = 0.1).onPress { robot.shootNow() }
 
         everyTick {
-            val forward = driver1.leftStick.y.value          // positive when pushed forward
+            val forward = controller1.leftStick.y.value          // positive when pushed forward
             ...
         }
     }
@@ -332,8 +332,8 @@ class GammaRobot(host: FtcHost) : Robot(host) {
 }
 
 // TeleOp
-everyTick { robot.drive.driveWith(driver1.leftStick, driver1.rightStick.x) }
-driver1.back.onPress { robot.drive.checkWheels() }   // each wheel in turn, to check directions and ports
+everyTick { robot.drive.driveWith(controller1.leftStick, controller1.rightStick.x) }
+controller1.back.onPress { robot.drive.checkWheels() }   // each wheel in turn, to check directions and ports
 ```
 
 `driveWith` drives robot-centric: the left stick moves, the right stick turns. When an action drives the robot, like
@@ -360,7 +360,7 @@ val here = robot.localizer.pose                                           // eve
 
 // Field-centric TeleOp: pushing forward drives away from the drivers, whichever way the robot faces
 everyTick {
-    robot.drive.driveWith(driver1.leftStick, driver1.rightStick.x,
+    robot.drive.driveWith(controller1.leftStick, controller1.rightStick.x,
         robot.localizer.pose.heading, DecodeField.driversFace(alliance))
 }
 ```
@@ -496,7 +496,7 @@ a warning at INIT below `battery.low` (12 V by default), and the lowest reading 
 5. `ftc`
    1. ~~hardware: `Motor`, `PositionServo` and `CRServo` with units and config settings; `DigitalInput`,
       `AnalogInput`, `DistanceSensor` and `ColorSensor`; indicator lights; `hardware<T>()` for other devices~~
-   2. ~~gamepad input: `driver1`, `driver2` with buttons, triggers and sticks~~
+   2. ~~gamepad input: `controller1`, `controller2` with buttons, triggers and sticks~~
    3. ~~config files on the robot and the settings web page~~
 6. ~~`core`: control (PID, feedforward, debouncer, hysteresis, slew rate)~~
 7. ~~telemetry: Driver Station lines, live graphs page, logs, battery~~

@@ -10,11 +10,11 @@ import kotlin.test.assertTrue
 class ControllerTest {
     private val host = TestFtcHost()
     private val gamepad = Gamepad()
-    private val controller = Controller(host, "driver1") { gamepad }
+    private val controller = Controller(host, "controller1") { gamepad }
 
     @BeforeTest
     fun noDeadband() {
-        Config.load("driver1.deadband = 0")
+        Config.load("controller1.deadband = 0")
     }
 
     @Test
