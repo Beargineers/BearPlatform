@@ -502,6 +502,24 @@ a warning at INIT below `battery.low` (12 V by default), and the lowest reading 
 9. Port the real robots onto the platform
    1. ~~one app for several robots: `RobotChoice` by robot configuration, robots created at INIT, config sections~~
    2. the DECODE season: its robot contract and shared opmodes, with Beta first, then Gamma
+10. Ready for other teams
+    1. MIT license and releases to Maven Central, the first being 0.1.0
+    2. generic check and tuning opmodes in the library, registered for the team's robot in a few lines
+    3. a quickstart project to start from: FtcRobotController without the Java samples, a Kotlin `TeamCode`
+    4. Gradle tasks instead of the shell scripts, so they work on Windows too
+
+## Using it
+
+BearPlatform is on Maven Central. In the robot app's `build.gradle` (`TeamCode` in a project made from
+FtcRobotController), with the Kotlin Android plugin 2.2 or newer applied:
+
+```groovy
+dependencies {
+    implementation 'nl.beargineers.platform:ftc:0.1.0'
+}
+```
+
+`ftc` brings `core` with it. It compiles against FTC SDK 11.1 and uses whichever SDK version the app has.
 
 ## Build
 
@@ -512,3 +530,9 @@ a warning at INIT below `battery.low` (12 V by default), and the lowest reading 
 
 The `ftc` module needs the Android SDK. Android Studio creates `local.properties` with its location when it opens
 the project; from the command line, create it with `sdk.dir=/path/to/Android/sdk`.
+
+Releases: see [RELEASING.md](RELEASING.md).
+
+## License
+
+[MIT](LICENSE): use it, change it, share it, just keep the copyright notice.

@@ -4,9 +4,16 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("com.android.library")
     kotlin("android")
+    id("com.vanniktech.maven.publish")
 }
 
-group = "org.beargineers.platform"
+mavenPublishing {
+    pom {
+        name.set("BearPlatform FTC")
+        description.set("The FTC SDK side of BearPlatform, a Kotlin platform for FTC robots: opmodes, hardware, " +
+            "gamepads, driving and the robot's web pages.")
+    }
+}
 
 android {
     namespace = "org.beargineers.platform.ftc"

@@ -4,9 +4,17 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     kotlin("jvm")
     `java-library`
+    id("com.vanniktech.maven.publish")
+    id("org.jetbrains.dokka-javadoc") // API docs in the published javadoc jar; ftc gets them from AGP
 }
 
-group = "org.beargineers.platform"
+mavenPublishing {
+    pom {
+        name.set("BearPlatform core")
+        description.set("Units, geometry, components, config and the coroutine loop runtime of BearPlatform, " +
+            "a Kotlin platform for FTC robots. Pure Kotlin/JVM, no FTC SDK.")
+    }
+}
 
 // Control Hub runs Android 7 (API 24); keep bytecode at Java 8 like the FTC SDK modules do.
 java {
