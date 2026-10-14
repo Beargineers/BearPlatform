@@ -39,7 +39,8 @@ class ExclusiveResource(val name: String) {
      *
      * Calling [takeOver] again from inside [block] (for example `driveTo()` from inside `drivePath()`) keeps control
      * and does not interrupt anything. That includes coroutines launched inside [block]: they share control with it,
-     * so two of them driving at the same time would fight each other.
+     * so two of them driving at the same time would fight each other. The action keeps control until they are done
+     * too, so `takeOver("hold") { everyTick { ... } }` holds it until another action takes over.
      */
     suspend fun <T> takeOver(action: String, block: suspend CoroutineScope.() -> T): T {
         if (currentCoroutineContext()[key] != null) return coroutineScope(block)
@@ -58,7 +59,9 @@ class ExclusiveResource(val name: String) {
             }
 
             try {
-                block()
+                // Coroutines the action launched, like an everyTick loop, are part of it: control passes on only once
+                // they are done too
+                coroutineScope(block)
             } finally {
                 if (holderJob === me) {
                     holderJob = null

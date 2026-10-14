@@ -69,6 +69,11 @@ suspend fun Drive.driveTo(target: Pose) = takeOver("driveTo $target") {
 
   `delay` and `withTimeout` work too; they measure time with the runtime's `TimeSource`, so tests control the clock.
 
+  `everyTick { }` sets up something to do every loop, like reading the sticks or showing a line, and returns right
+  away, like a button handler: code after it runs too. The loop lasts as long as the coroutine that set it up, so one
+  set up in an opmode's `onInit` stops at START. An action that must clean up when stopped loops by itself instead,
+  `try { while (true) { ...; nextTick() } } finally { motor.power = 0.0 }`, so its `finally` runs when it stops.
+
 - `config`: settings that change without rebuilding the code, declared right where they are used:
 
 ```kotlin

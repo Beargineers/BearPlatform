@@ -18,7 +18,7 @@ class ExclusiveResourceTest {
         drive.takeOver(action) {
             try {
                 events += "$action starts"
-                everyTick { }
+                while (true) nextTick()
             } finally {
                 events += "$action stops motors"
             }
@@ -81,6 +81,22 @@ class ExclusiveResourceTest {
         loop.tick(3)
         assertEquals(listOf("path starts", "segment runs", "path continues"), events)
         assertFalse(drive.isBusy)
+    }
+
+    @Test
+    fun loopsLaunchedByAnActionKeepItInControl() {
+        var holds = 0
+        loop.launch { drive.takeOver("hold") { everyTick { holds++ } } }
+        loop.tick(3)
+        // The block returned right after setting up its loop, but the action lasts as long as the loop
+        assertEquals("hold", drive.currentAction)
+
+        loop.launch { driveForever("to goal") }
+        loop.tick()
+        val holdsWhenTakenOver = holds
+        loop.tick(3)
+        assertEquals(holdsWhenTakenOver, holds)
+        assertEquals("to goal", drive.currentAction)
     }
 
     @Test

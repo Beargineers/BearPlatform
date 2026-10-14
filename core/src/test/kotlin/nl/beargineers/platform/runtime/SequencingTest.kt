@@ -68,9 +68,38 @@ class SequencingTest {
         val job = loop.launch { everyTick { runs++ } }
 
         loop.tick(5)
+        // The coroutine that set up the loop lasts as long as the loop, and cancelling it stops the loop
+        assertTrue(job.isActive)
         job.cancel()
         loop.tick(5)
         assertEquals(5, runs)
+    }
+
+    @Test
+    fun codeAfterEveryTickRuns() {
+        var runs = 0
+        var after = false
+        loop.launch {
+            everyTick { runs++ }
+            after = true
+        }
+
+        loop.tick()
+        assertEquals(1, runs)
+        assertTrue(after)
+    }
+
+    @Test
+    fun everyTickReturnsAJobThatStopsIt() {
+        var runs = 0
+        loop.launch {
+            val counting = everyTick { runs++ }
+            waitUntil { runs == 3 }
+            counting.cancel()
+        }
+
+        loop.tick(10)
+        assertEquals(3, runs)
     }
 
     @Test

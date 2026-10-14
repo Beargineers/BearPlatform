@@ -3,9 +3,12 @@ package nl.beargineers.platform.runtime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -20,13 +23,24 @@ suspend fun waitUntil(condition: () -> Boolean) {
 suspend fun waitUntil(timeout: Duration, condition: () -> Boolean): Boolean =
     withTimeoutOrNull(timeout) { waitUntil(condition) } != null
 
-/** Runs [block] once every tick until the coroutine is cancelled */
-suspend fun everyTick(block: suspend () -> Unit): Nothing {
-    while (true) {
-        block()
-        nextTick()
+/**
+ * Runs [block] once every tick, alongside the code that called it. Like a button handler, it is set up and returns
+ * right away, so code after it runs too: the first run happens during the call, the next ones once per tick.
+ *
+ * The loop belongs to the coroutine that set it up: it stops when that coroutine is cancelled, like an opmode's
+ * `onInit` at START, and that coroutine doesn't finish while the loop runs. The returned job stops it earlier.
+ *
+ * An action that has to clean up when it is stopped, like setting a motor's power back to zero, loops by itself
+ * instead, so its `finally` runs when the loop stops, not when the loop is set up:
+ * `try { while (true) { ...; nextTick() } } finally { motor.power = 0.0 }`.
+ */
+suspend fun everyTick(block: suspend () -> Unit): Job =
+    CoroutineScope(currentCoroutineContext()).launch(start = CoroutineStart.UNDISPATCHED) {
+        while (true) {
+            block()
+            nextTick()
+        }
     }
-}
 
 /**
  * Runs all [contestants] at the same time. As soon as one of them finishes, the others are cancelled
