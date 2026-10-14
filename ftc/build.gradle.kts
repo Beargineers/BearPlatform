@@ -16,7 +16,7 @@ mavenPublishing {
 }
 
 android {
-    namespace = "org.beargineers.platform.ftc"
+    namespace = "nl.beargineers.platform.ftc"
     compileSdk = 34
 
     defaultConfig {

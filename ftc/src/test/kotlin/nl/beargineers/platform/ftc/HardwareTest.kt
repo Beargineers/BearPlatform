@@ -1,0 +1,203 @@
+package nl.beargineers.platform.ftc
+
+import com.qualcomm.robotcore.hardware.DcMotor
+import com.qualcomm.robotcore.hardware.DcMotorSimple
+import com.qualcomm.robotcore.hardware.Servo
+import nl.beargineers.platform.component.Component
+import nl.beargineers.platform.component.Robot
+import nl.beargineers.platform.component.RobotHost
+import nl.beargineers.platform.config.Config
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+
+private class Shooter(parent: Component) : Component(parent) {
+    val flywheel = Motor(this, "flywheel", direction = DcMotorSimple.Direction.REVERSE, brake = false)
+    val turret = Motor(this, "turret", ticksPerTurn = 384.5, gearRatio = 2.0)
+    val hood = Motor(this, "hood", ticksPerTurn = 1425.1)
+    val latch = PositionServo(this, "latch", device = "latchServo")
+}
+
+private class TestRobot(host: RobotHost) : Robot(host) {
+    val shooter = Shooter(this)
+}
+
+private class RobotWithMissingMotor(host: RobotHost) : Robot(host) {
+    val intake = Motor(this, "intake")
+}
+
+class HardwareTest {
+    private val host = TestFtcHost()
+    private val flywheel = FakeMotor()
+    private val turret = FakeMotor()
+    private val hood = FakeMotor()
+    private val latch = FakeServo()
+
+    @BeforeTest
+    fun setUp() {
+        Config.load("")
+        host.hardware.add("flywheel", flywheel.device)
+        host.hardware.add("turret", turret.device)
+        host.hardware.add("hood", hood.device)
+        host.hardware.add("latchServo", latch.device)
+    }
+
+    private fun startRobot(): TestRobot = TestRobot(host).also { host.runner.init() }
+
+    @Test
+    fun motorSettingsStartFromConstructorDefaults() {
+        startRobot()
+        assertEquals(DcMotorSimple.Direction.REVERSE, flywheel.direction)
+        assertEquals(DcMotor.ZeroPowerBehavior.FLOAT, flywheel.zeroPowerBehavior)
+        assertEquals(DcMotor.RunMode.RUN_WITHOUT_ENCODER, flywheel.mode)
+        assertEquals(DcMotorSimple.Direction.FORWARD, turret.direction)
+        assertEquals(DcMotor.ZeroPowerBehavior.BRAKE, turret.zeroPowerBehavior)
+    }
+
+    @Test
+    fun motorSettingsFollowConfig() {
+        startRobot()
+        Config.load("shooter.flywheel.direction = F\nshooter.flywheel.brake = yes")
+        host.runner.tick()
+        assertEquals(DcMotorSimple.Direction.FORWARD, flywheel.direction)
+        assertEquals(DcMotor.ZeroPowerBehavior.BRAKE, flywheel.zeroPowerBehavior)
+    }
+
+    @Test
+    fun velocityControlUsesTheEncoderMode() {
+        val robot = startRobot()
+        robot.shooter.flywheel.power = 0.4
+        Config.load("shooter.flywheel.velocityControl = yes")
+        host.runner.tick()
+        assertEquals(DcMotor.RunMode.RUN_USING_ENCODER, flywheel.mode)
+        assertEquals(0.4, flywheel.power, "power sent again in the new mode")
+
+        Config.load("")
+        host.runner.tick()
+        assertEquals(DcMotor.RunMode.RUN_WITHOUT_ENCODER, flywheel.mode)
+    }
+
+    @Test
+    fun positionAndVelocityAreMeasuredAfterGearing() {
+        val robot = startRobot()
+        turret.position = 769 // two motor turns of 384.5 ticks
+        turret.ticksPerSecond = 384.5
+        assertEquals(360.0, robot.shooter.turret.position.inDegrees, 1e-9)
+        assertEquals(180.0, robot.shooter.turret.velocity.inDegreesPerSecond, 1e-9)
+    }
+
+    @Test
+    fun ticksPerTurnFromConfig() {
+        val robot = startRobot()
+        hood.position = 14251 // ten turns of a goBILDA 117 RPM
+        assertEquals(3600.0, robot.shooter.hood.position.inDegrees, 1e-9)
+
+        Config.load("shooter.turret.ticksPerTurn = 769")
+        turret.position = 769
+        assertEquals(180.0, robot.shooter.turret.position.inDegrees, 1e-9, "one motor turn, halved by the gear ratio")
+    }
+
+    @Test
+    fun ticksPerTurnIsNeededOnlyToMeasure() {
+        val robot = startRobot()
+        assertTrue(robot.warnings.isEmpty(), "${robot.warnings}")
+
+        // Driving and raw ticks don't need the encoder resolution
+        robot.shooter.flywheel.power = 0.5
+        flywheel.position = 100
+        assertEquals(100, robot.shooter.flywheel.ticks)
+
+        for (read in listOf({ robot.shooter.flywheel.position }, { robot.shooter.flywheel.velocity })) {
+            val thrown = assertFailsWith<IllegalStateException> { read() }
+            assertTrue("Set shooter.flywheel.ticksPerTurn to the resolution" in thrown.message!!, thrown.message)
+        }
+    }
+
+    @Test
+    fun resetPositionMakesANewZero() {
+        turret.position = 1000
+        val robot = startRobot()
+        assertEquals(0, robot.shooter.turret.ticks)
+        turret.position = 1100
+        robot.shooter.turret.resetPosition()
+        turret.position = 1150
+        assertEquals(50, robot.shooter.turret.ticks)
+    }
+
+    @Test
+    fun onlyPowerChangesAboveTheToleranceAreSent() {
+        val motor = startRobot().shooter.flywheel
+        val writesAfterInit = flywheel.powerWrites
+
+        repeat(3) { motor.power = 0.5 }
+        assertEquals(writesAfterInit + 1, flywheel.powerWrites)
+
+        // Within powerTolerance (0.005) of what the hub has: not sent, but small changes add up
+        motor.power = 0.503
+        assertEquals(0.503, motor.power)
+        assertEquals(0.5, flywheel.power)
+        assertEquals(0.5, motor.sentPower)
+        motor.power = 0.506
+        assertEquals(0.506, flywheel.power)
+        assertEquals(writesAfterInit + 2, flywheel.powerWrites)
+
+        motor.power = 1.7
+        assertEquals(1.0, motor.power)
+        assertEquals(1.0, flywheel.power)
+        motor.power = 0.997
+        assertEquals(1.0, flywheel.power)
+
+        // Stopping is always sent, even when the hub has nearly zero
+        motor.power = 0.003
+        assertEquals(0.003, flywheel.power)
+        motor.power = 0.0
+        assertEquals(0.0, flywheel.power)
+
+        Config.load("shooter.flywheel.powerTolerance = 0")
+        motor.power = 0.001
+        assertEquals(0.001, flywheel.power)
+    }
+
+    @Test
+    fun stopTurnsMotorsOff() {
+        startRobot().shooter.flywheel.power = 0.8
+        host.runner.stop()
+        assertEquals(0.0, flywheel.power)
+    }
+
+    @Test
+    fun missingDeviceFailsAtInit() {
+        RobotWithMissingMotor(host)
+        val thrown = assertFailsWith<IllegalStateException> { host.runner.init() }
+        assertEquals("intake: the robot configuration has no DcMotorEx named 'intake'", thrown.message)
+    }
+
+    @Test
+    fun hardwareIsNotAvailableBeforeInit() {
+        val robot = TestRobot(TestFtcHost(hardwareAvailable = false))
+        val thrown = assertFailsWith<IllegalStateException> { robot.shooter.flywheel.power = 0.5 }
+        assertEquals("shooter.flywheel: hardware is available from init() on, not in constructors", thrown.message)
+    }
+
+    @Test
+    fun servoOnlyMovesWhenTold() {
+        val servo = startRobot().shooter.latch
+        assertEquals(0, latch.positionWrites)
+
+        repeat(3) { servo.position = 0.3 }
+        assertEquals(1, latch.positionWrites)
+        servo.position = 1.5
+        assertEquals(1.0, latch.position)
+    }
+
+    @Test
+    fun servoDirectionFollowsConfig() {
+        startRobot()
+        assertEquals(Servo.Direction.FORWARD, latch.direction)
+        Config.load("shooter.latch.direction = R")
+        host.runner.tick()
+        assertEquals(Servo.Direction.REVERSE, latch.direction)
+    }
+}
