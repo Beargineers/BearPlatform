@@ -137,13 +137,13 @@ or add `includeBuild('../BearPlatform')` to the robot project's `settings.gradle
    1. ~~one app for several robots: `RobotChoice` by robot configuration, robots created at INIT, config sections~~
    2. the DECODE season: its robot contract and shared opmodes, with Beta first, then Gamma
 10. Ready for other teams
-    1. MIT license and releases to Maven Central, the first being 0.1.0
+    1. ~~MIT license and releases to Maven Central, the first being 0.1.0~~
     2. generic check and tuning opmodes in the library, registered for the team's robot in a few lines
-    3. a quickstart project to start from: FtcRobotController without the Java samples, a Kotlin `TeamCode`
+    3. ~~a quickstart project to start from: FtcRobotController without the Java samples, a Kotlin `TeamCode`~~
     4. Gradle tasks instead of the shell scripts, so they work on Windows too
     5. tank drives: an FTC `TankDrive` for `TankDrivetrain`, and field-centric driving for it, which has to turn the
        robot toward where the stick points before driving there
-    6. the manual at beargineers.nl/platform
+    6. ~~the manual at beargineers.nl/platform~~
 
 ### Releasing
 
