@@ -151,7 +151,9 @@ class Flywheel(parent: Component) : Component(parent) {
   keep at most one sample per 10 ms of each value.
 
 - `drive` and `localization`: the `Drivetrain` and `Localizer` components that teleop driving and path following use;
-  the FTC implementations, `MecanumDrive` and `PinpointLocalizer`, are in `ftc` (below).
+  the FTC implementations, `MecanumDrive` and `PinpointLocalizer`, are in `ftc` (below). Drivetrains that move in any
+  direction, like mecanum ones, are `OmniDrivetrain`s; tank drives are `TankDrivetrain`s, with their own teleop
+  controls.
 
 - `indicator`: `Indicator<S>`, lights that parts of the robot show states on through signals with priorities: steady,
   for a while, blinking or in a `Pattern`. The FTC lights, `RgbLight` and `RevLeds`, are in `ftc` (below).
@@ -344,8 +346,11 @@ speed by its encoder: powers then ask for speeds, so even small ones move the ro
 drive encoders plugged in: without one, the hub keeps raising that wheel's power, up to full. Settings: `drive.maxPower` scales everything down (0.3 for the first tries),
 `drive.strafeScale` makes up for mecanum wheels slipping sideways, and each motor's `drive.leftFront.direction` etc.
 
-`MecanumDrive` is a `Drivetrain`, which is what teleop driving and path following use. Other kinds, like tank or
-swerve, would be other `Drivetrain`s: a tank drive can't strafe (`canStrafe` false) and ignores `right`.
+`MecanumDrive` is an `OmniDrivetrain`: it moves in any direction while turning, which path following and
+field-centric driving need. X and swerve drives would be `OmniDrivetrain`s too. A tank drive, whose wheels on each
+side turn together, is a `TankDrivetrain` instead: `drive(forward, turn)`, and teleop with tank controls, each stick
+driving its side, `drive.driveWith(controller1.leftStick.y, controller1.rightStick.y)`. The type keeps it out of path
+following, which needs to strafe.
 
 #### Localization
 
@@ -512,6 +517,8 @@ a warning at INIT below `battery.low` (12 V by default), and the lowest reading 
     2. generic check and tuning opmodes in the library, registered for the team's robot in a few lines
     3. a quickstart project to start from: FtcRobotController without the Java samples, a Kotlin `TeamCode`
     4. Gradle tasks instead of the shell scripts, so they work on Windows too
+    5. tank drives: an FTC `TankDrive` for `TankDrivetrain`, and field-centric driving for it, which has to turn the
+       robot toward where the stick points before driving there
 
 ## Using it
 

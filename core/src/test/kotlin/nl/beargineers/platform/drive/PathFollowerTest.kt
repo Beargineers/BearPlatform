@@ -19,7 +19,6 @@ import kotlin.math.sign
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration
@@ -39,11 +38,10 @@ private class SimLocalizer(parent: Component) : Localizer(parent) {
  * mass makes it. With [friction], that much of each power goes into friction, like a real robot that doesn't move on
  * small powers.
  */
-private class SimDrive(parent: Component, private val localizer: SimLocalizer) : Drivetrain(parent, "drive") {
+private class SimDrive(parent: Component, private val localizer: SimLocalizer) : OmniDrivetrain(parent, "drive") {
     var forward = 0.0
     var right = 0.0
     var turn = 0.0
-    var strafes = true
     var stuck = false
     var friction = 0.0
 
@@ -55,8 +53,6 @@ private class SimDrive(parent: Component, private val localizer: SimLocalizer) :
 
     /** Every command, with where the robot was when it came */
     val commands = mutableListOf<Pair<Pose, List<Double>>>()
-
-    override val canStrafe: Boolean get() = strafes
 
     override fun drive(forward: Double, right: Double, turn: Double) {
         this.forward = forward
@@ -283,12 +279,5 @@ class PathFollowerTest {
         val (reached, _) = run { robot.follower.drivePath(listOf(Waypoint(Pose(100.cm, 0.cm, 0.degrees))), stopAtEnd = false) }
         assertTrue(reached)
         assertTrue(drive.forward > 0.0, "still driving at the end")
-    }
-
-    @Test
-    fun needsADrivetrainThatCanStrafe() {
-        drive.strafes = false
-        val thrown = assertFailsWith<IllegalStateException> { run { robot.follower.driveTo(Pose.ZERO) } }
-        assertEquals("drive can't strafe, and PathFollower needs a drivetrain that can", thrown.message)
     }
 }

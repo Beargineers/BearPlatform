@@ -5,7 +5,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import nl.beargineers.platform.component.Component
 import nl.beargineers.platform.config.config
 import nl.beargineers.platform.config.optionalConfig
-import nl.beargineers.platform.drive.Drivetrain
+import nl.beargineers.platform.drive.OmniDrivetrain
 import nl.beargineers.platform.drive.MecanumPowers
 import nl.beargineers.platform.runtime.everyTick
 import kotlin.time.Duration.Companion.seconds
@@ -28,7 +28,7 @@ class MecanumDrive(
     name: String = "drive",
     velocityControl: Boolean = false,
     ticksPerTurn: Double? = null,
-) : Drivetrain(parent, name) {
+) : OmniDrivetrain(parent, name) {
     val leftFront = wheel("leftFront", Direction.REVERSE, velocityControl, ticksPerTurn)
     val rightFront = wheel("rightFront", Direction.FORWARD, velocityControl, ticksPerTurn)
     val leftBack = wheel("leftBack", Direction.REVERSE, velocityControl, ticksPerTurn)
@@ -49,8 +49,6 @@ class MecanumDrive(
      * sideways push of the stick is as fast as a forward one.
      */
     val strafeScale by config(1.0)
-
-    override val canStrafe: Boolean get() = true
 
     private val wheels = listOf(leftFront, rightFront, leftBack, rightBack)
 

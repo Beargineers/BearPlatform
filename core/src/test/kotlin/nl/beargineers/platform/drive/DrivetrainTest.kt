@@ -26,20 +26,34 @@ private class TestPad(host: RobotHost) : Controls(host, "pad") {
 
     val move = stick({ moveX }, { moveY })
     val turn = axis { turnX }
+
+    // Tank controls
+    var leftY = 0.0
+    var rightY = 0.0
+
+    val left = axis { leftY }
+    val right = axis { rightY }
 }
 
-private class FakeDrive(parent: Component) : Drivetrain(parent, "drive") {
+private class FakeDrive(parent: Component) : OmniDrivetrain(parent, "drive") {
     var driven: List<Double>? = null
-
-    override val canStrafe: Boolean get() = true
 
     override fun drive(forward: Double, right: Double, turn: Double) {
         driven = listOf(forward, right, turn)
     }
 }
 
+private class FakeTank(parent: Component) : TankDrivetrain(parent, "tank") {
+    var driven: List<Double>? = null
+
+    override fun drive(forward: Double, turn: Double) {
+        driven = listOf(forward, turn)
+    }
+}
+
 private class TestRobot(host: RobotHost) : Robot(host) {
     val drive = FakeDrive(this)
+    val tank = FakeTank(this)
 }
 
 class DrivetrainTest {
@@ -154,5 +168,53 @@ class DrivetrainTest {
         tick()
         assertNull(robot.drive.currentAction)
         assertDrove(forward = 0.0, right = 0.1, turn = 0.0)
+    }
+
+    private fun assertTankDrove(forward: Double, turn: Double) {
+        val driven = robot.tank.driven ?: error("didn't drive")
+        assertEquals(forward, driven[0], 1e-9, "forward")
+        assertEquals(turn, driven[1], 1e-9, "turn")
+    }
+
+    @Test
+    fun tankControlsDriveEachSideWithItsStick() {
+        pad.leftY = 1.0
+        pad.rightY = 1.0
+        tick()
+        robot.tank.driveWith(pad.left, pad.right)
+        assertTankDrove(forward = 1.0, turn = 0.0)
+
+        // Left side forward, right side back: spins clockwise in place
+        pad.rightY = -1.0
+        tick()
+        robot.tank.driveWith(pad.left, pad.right)
+        assertTankDrove(forward = 0.0, turn = -1.0)
+
+        // Only the right side: forward, turning left around the left wheels
+        pad.leftY = 0.0
+        pad.rightY = 0.6
+        tick()
+        robot.tank.driveWith(pad.left, pad.right)
+        assertTankDrove(forward = 0.3, turn = 0.3)
+    }
+
+    @Test
+    fun tankActionsKeepDrivingUntilAStickIsPushedFar() {
+        runner.start {
+            launch { robot.tank.takeOver("turn to heading") { awaitCancellation() } }
+            everyTick { robot.tank.driveWith(pad.left, pad.right) }
+        }
+        tick()
+        robot.tank.driven = null
+
+        pad.leftY = 0.3
+        tick()
+        assertEquals("turn to heading", robot.tank.currentAction)
+        assertNull(robot.tank.driven)
+
+        pad.rightY = -0.8
+        tick()
+        assertFalse(robot.tank.isBusy)
+        assertTankDrove(forward = -0.25, turn = -0.55)
     }
 }

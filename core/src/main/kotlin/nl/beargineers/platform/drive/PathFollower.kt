@@ -38,8 +38,8 @@ data class Waypoint(
 
 /**
  * Drives the robot to poses on the field, and along paths of them, using where its [localizer] says it is. Three PIDs
- * turn how far the robot still has to go, forward, sideways and around, into powers for the [drive], which has to be
- * able to strafe. Create it after both: `val follower = PathFollower(this, drive, localizer)`.
+ * turn how far the robot still has to go, forward, sideways and around, into powers for the [drive], which moves in
+ * any direction. Create it after both: `val follower = PathFollower(this, drive, localizer)`.
  *
  * ```
  * follower.driveTo(SPIKE_1)                                     // drives there and stops
@@ -53,7 +53,7 @@ data class Waypoint(
  */
 class PathFollower(
     parent: Component,
-    private val drive: Drivetrain,
+    private val drive: OmniDrivetrain,
     private val localizer: Localizer,
     name: String = "follower",
 ) : Component(parent, name) {
@@ -121,7 +121,6 @@ class PathFollower(
      */
     suspend fun drivePath(waypoints: List<Waypoint>, stopAtEnd: Boolean = true): Boolean {
         require(waypoints.isNotEmpty()) { "A path needs at least one waypoint" }
-        check(drive.canStrafe) { "${drive.path} can't strafe, and PathFollower needs a drivetrain that can" }
         return drive.takeOver("drive to ${waypoints.last().pose}") {
             var finished = false
             try {
@@ -139,7 +138,6 @@ class PathFollower(
      * the action, or the sticks taking over, ends it.
      */
     suspend fun hold(target: Pose): Nothing {
-        check(drive.canStrafe) { "${drive.path} can't strafe, and PathFollower needs a drivetrain that can" }
         drive.takeOver("hold $target") {
             try {
                 keepAt(target)
