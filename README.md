@@ -1,11 +1,36 @@
 # BearPlatform
 
-A Kotlin library for programming FTC robots, from team Beargineers (#27628). It sits on top of FIRST's FTC SDK and
-gives robot code a shape students can read, change and reuse from one season to the next:
+A Kotlin library for programming FTC robots, from team Beargineers (#27628), built around **coroutines**: robot code is
+written as the plan it carries out, one step after another, and a step that takes time simply waits, while the robot
+keeps reading its sensors, answering the gamepads and running everything else.
+
+```kotlin
+suspend fun MyRobot.collectAndScore(spikes: List<Pose>) {
+    for (spike in spikes) {
+        intake.on()
+        withTimeoutOrNull(3.seconds) {                    // give up on a spike after 3 seconds
+            race({ follower.driveTo(spike) }, { waitUntil { intake.isFull } })
+        }
+        intake.off()
+        if (intake.isFull) {
+            follower.driveTo(BASKET)
+            shooter.shoot()
+            return
+        }
+    }
+}
+```
+
+No state machines written by hand, no action classes wired together, no threads: `if`, `for`, variables and
+`try`/`finally` work as everywhere in Kotlin, and a new action on a part of the robot stops the old one, which cleans up
+after itself. Coroutines are new to most FTC programmers: [Why coroutines](https://beargineers.nl/platform/why-coroutines/)
+explains the idea and compares it with the state machines and composable actions FTC teams know.
+
+Around that, BearPlatform sits on top of FIRST's FTC SDK and gives robot code a shape students can read, change and
+reuse from one season to the next:
 
 - a robot is a tree of small parts, each with its own settings;
 - settings are declared where the code uses them, and tuned live on the robot from a laptop, without rebuilding;
-- robot code reads top to bottom, as steps that wait for each other, with no threads;
 - distances, angles and speeds carry their units;
 - mecanum driving, Pinpoint odometry, field-centric TeleOp and driving to poses come with it;
 - Driver Station lines, live graphs in the browser, logs, and commands that start actions from a laptop show what the
