@@ -96,8 +96,7 @@ Contributions are welcome: fixes, new hardware, better docs. For anything big, o
 |--------|---------------------------------------------------------------------------------------------------------|
 | `core` | Pure Kotlin/JVM, no FTC SDK: units, geometry, components, config, the coroutine runtime, control, driving. Everything here runs in unit tests on a laptop. |
 | `ftc`  | Android library on top of the FTC SDK: opmodes, hardware, gamepads, the robot's web pages.             |
-
-`scripts/` has shell scripts for the robot's web pages: sending settings, starting commands, downloading match logs.
+| `gradle-plugin` | The Gradle plugin `nl.beargineers.platform`: tasks for a robot project that talk to the robot's web pages, `sendConfig`, `downloadMatchLogs` and `robotCommand`. Plain Kotlin, so they work on Windows too. |
 
 ### Build and test
 
@@ -106,6 +105,9 @@ Contributions are welcome: fixes, new hardware, better docs. For anything big, o
 ./gradlew :ftc:assembleDebug    # builds the FTC module
 ./gradlew publishToMavenLocal   # the -SNAPSHOT version into ~/.m2, for trying in a robot project
 ```
+
+A robot project finds a local snapshot with `mavenLocal()` in its repositories, and in `pluginManagement`'s
+repositories for the Gradle plugin.
 
 The `ftc` module needs the Android SDK. Android Studio creates `local.properties` with its location when it opens the
 project; from the command line, create it with `sdk.dir=/path/to/Android/sdk`. CI runs the tests and a local publish on
@@ -165,7 +167,7 @@ or add `includeBuild('../BearPlatform')` to the robot project's `settings.gradle
     1. ~~MIT license and releases to Maven Central, the first being 0.1.0~~
     2. generic check and tuning opmodes in the library, registered for the team's robot in a few lines
     3. ~~a quickstart project to start from: FtcRobotController without the Java samples, a Kotlin `TeamCode`~~
-    4. Gradle tasks instead of the shell scripts, so they work on Windows too
+    4. ~~Gradle tasks instead of the shell scripts, so they work on Windows too~~
     5. tank drives: an FTC `TankDrive` for `TankDrivetrain`, and field-centric driving for it, which has to turn the
        robot toward where the stick points before driving there
     6. ~~the manual at beargineers.nl/platform~~

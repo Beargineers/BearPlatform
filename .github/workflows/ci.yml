@@ -21,3 +21,15 @@ jobs:
 
       # The runner has the Android SDK. Publishing locally checks that a release would build its jars and docs.
       - run: ./gradlew test publishToMavenLocal
+
+  # The Gradle plugin is there so Windows works too: its tests run on Windows
+  gradle-plugin-on-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew.bat :gradle-plugin:test

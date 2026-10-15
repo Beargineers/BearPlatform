@@ -17,3 +17,4 @@ rootProject.name = "BearPlatform"
 
 include(":core")
 include(":ftc")
+include(":gradle-plugin")

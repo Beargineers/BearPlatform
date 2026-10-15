@@ -1,7 +1,9 @@
 # Releasing
 
 BearPlatform is published to [Maven Central](https://central.sonatype.com/namespace/nl.beargineers) as
-`nl.beargineers.platform:core` and `nl.beargineers.platform:ftc`. Pushing a git tag does the release:
+`nl.beargineers.platform:core`, `nl.beargineers.platform:ftc` and `nl.beargineers.platform:gradle-plugin`, with the
+plugin's marker `nl.beargineers.platform:nl.beargineers.platform.gradle.plugin`, which lets Gradle find the plugin by
+its id. All of them share one version. Pushing a git tag does the release:
 
 ```
 git tag v0.2.0
